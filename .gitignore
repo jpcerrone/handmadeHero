@@ -1,0 +1,6 @@
+#Vscode launch files
+.Vscode
+
+#Build files
+build
+compile.bat
