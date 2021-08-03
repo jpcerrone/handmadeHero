@@ -1,4 +1,59 @@
 #include <Windows.h>
+static bool running;
+static BITMAPINFO bmpInfo;
+static void *bitmapMemory;
+static int bitmapWidth;
+static int bitmapHeight;
+static int bytesPerPixel = 4;
+void renderGradient(int xOffset){
+  int pitch = bytesPerPixel*bitmapWidth;
+
+  unsigned char *row = (unsigned char *) bitmapMemory;
+
+  for(int y = 0; y < bitmapHeight; y++){
+    unsigned long *pixel = (unsigned long *) row;
+    for(int x = 0; x < bitmapWidth; x++){
+      *pixel = (0xAA << 8) | ((x+xOffset)*255/bitmapWidth);
+      pixel++;
+    }
+    row += pitch;
+  }
+}
+
+
+
+void resizeDIBSecion(int width, int height)
+{
+  if(bitmapMemory){
+    VirtualFree(bitmapMemory, 0, MEM_RELEASE);
+  }
+
+  bitmapWidth = width;
+  bitmapHeight = height;
+
+  bmpInfo.bmiHeader.biSize = sizeof(bmpInfo.bmiHeader);
+  bmpInfo.bmiHeader.biWidth = bitmapWidth;
+  bmpInfo.bmiHeader.biHeight = -bitmapHeight;
+  bmpInfo.bmiHeader.biPlanes = 1;
+  bmpInfo.bmiHeader.biBitCount = 32;
+  bmpInfo.bmiHeader.biCompression = BI_RGB;
+
+  int bitmapMemorySize = bytesPerPixel*bitmapWidth*bitmapHeight;
+  bitmapMemory = VirtualAlloc(0,bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+}
+
+void updateWindow(RECT *WindowRect, HDC deviceContext)
+{
+  int windowWidth = WindowRect->right - WindowRect->left;
+  int windowHeight = WindowRect->bottom - WindowRect->top;
+  StretchDIBits(deviceContext,
+                0, 0, bitmapWidth, bitmapHeight,
+                0, 0, windowWidth, windowHeight,
+                bitmapMemory,
+                &bmpInfo,
+                DIB_RGB_COLORS,
+                SRCCOPY);
+}
 
 LRESULT CALLBACK MainWindowCallback(
     HWND hwnd,
@@ -16,34 +71,41 @@ LRESULT CALLBACK MainWindowCallback(
   break;
   case WM_SIZE:
   {
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    int width = clientRect.right - clientRect.left;
+    int height = clientRect.bottom - clientRect.top;
+    resizeDIBSecion(width, height);
     OutputDebugStringA("WM_SIZE\n");
   }
   break;
   case WM_DESTROY:
   {
+    running = false;
     OutputDebugStringA("WM_DESTROY\n");
   }
   break;
   case WM_CLOSE:
   {
+    running = false;
     OutputDebugStringA("WM_CLOSE\n");
   }
   break;
-  case WM_PAINT:{
+  case WM_PAINT:
+  {
     PAINTSTRUCT paintStruct;
     HDC deviceContext = BeginPaint(hwnd, &paintStruct);
+    int x = paintStruct.rcPaint.left;
+    int y = paintStruct.rcPaint.top;
     int width = paintStruct.rcPaint.right - paintStruct.rcPaint.left;
     int height = paintStruct.rcPaint.bottom - paintStruct.rcPaint.top;
-    static DWORD color = WHITENESS;
-    if (color == WHITENESS){
-      color = BLACKNESS;
-    }
-    else{
-      color = WHITENESS;
-    }
-    PatBlt(deviceContext, paintStruct.rcPaint.left, paintStruct.rcPaint.top , width, height, color);
-    EndPaint(hwnd,&paintStruct);
-  } break;
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    renderGradient(100);
+    updateWindow(&clientRect, deviceContext);
+    EndPaint(hwnd, &paintStruct);
+  }
+  break;
   default:
   {
     result = DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -67,25 +129,28 @@ int CALLBACK WinMain(
   if (RegisterClassA(&windowClass))
   {
     HWND windowHandle = CreateWindowExA(0, windowClass.lpszClassName,
-                                       "Handmade Hero", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                                       CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                                       0, 0, hInstance, 0);
+                                        "Handmade Hero", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                        0, 0, hInstance, 0);
     if (windowHandle)
     {
-      for (;;)
+      running = true;
+      int xOffset = 0;
+      while (running)
       {
         MSG lpMsg;
-        BOOL messageResult = GetMessage(&lpMsg, 0, 0, 0);
-        if (messageResult > 0)
+        while (PeekMessageA(&lpMsg, 0, 0, 0, PM_REMOVE))
         {
           TranslateMessage(&lpMsg);
           DispatchMessage(&lpMsg);
         }
-        else
-        {
-          break;
-          //TODO: log error
-        }
+        
+        renderGradient(xOffset++);
+        HDC deviceContext = GetDC(windowHandle);
+        RECT clientRect;
+        GetClientRect(windowHandle, &clientRect);
+        updateWindow(&clientRect, deviceContext);
+        ReleaseDC(windowHandle, deviceContext);
       }
     }
     else
