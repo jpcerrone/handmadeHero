@@ -1,56 +1,82 @@
 #include <Windows.h>
+#include <stdint.h>
+#include <Xinput.h>
 static bool running;
-static BITMAPINFO bmpInfo;
-static void *bitmapMemory;
-static int bitmapWidth;
-static int bitmapHeight;
-static int bytesPerPixel = 4;
-void renderGradient(int xOffset){
-  int pitch = bytesPerPixel*bitmapWidth;
 
-  unsigned char *row = (unsigned char *) bitmapMemory;
+struct backBuffer
+{
+  BITMAPINFO info;
+  void *memory;
+  int width;
+  int height;
+  int bytesPerPixel = 4;
+  int pitch;
+};
 
-  for(int y = 0; y < bitmapHeight; y++){
-    unsigned long *pixel = (unsigned long *) row;
-    for(int x = 0; x < bitmapWidth; x++){
-      *pixel = (0xAA << 8) | ((x+xOffset)*255/bitmapWidth);
+struct Dimension
+{
+  int width;
+  int height;
+};
+
+static backBuffer globalBackBuffer;
+
+Dimension getWindowDimension(HWND window)
+{
+  RECT rect;
+  GetWindowRect(window, &rect);
+  Dimension d;
+  d.width = rect.right - rect.left;
+  d.height = rect.bottom - rect.top;
+  return d;
+}
+
+void renderGradient(backBuffer buffer, int xOffset)
+{
+
+  uint8_t *row = (uint8_t *)buffer.memory;
+
+  for (int y = 0; y < buffer.height; y++)
+  {
+    uint32_t *pixel = (uint32_t *)row;
+    for (int x = 0; x < buffer.width; x++)
+    {
+      *pixel = (0xAA << 8) | ((x + xOffset) * 255 / buffer.width);
       pixel++;
     }
-    row += pitch;
+    row += buffer.pitch;
   }
 }
 
-
-
-void resizeDIBSecion(int width, int height)
+void resizeDIBSecion(backBuffer *buffer, int width, int height)
 {
-  if(bitmapMemory){
-    VirtualFree(bitmapMemory, 0, MEM_RELEASE);
+  if (buffer->memory)
+  {
+    VirtualFree(buffer->memory, 0, MEM_RELEASE);
   }
 
-  bitmapWidth = width;
-  bitmapHeight = height;
+  buffer->width = width;
+  buffer->height = height;
 
-  bmpInfo.bmiHeader.biSize = sizeof(bmpInfo.bmiHeader);
-  bmpInfo.bmiHeader.biWidth = bitmapWidth;
-  bmpInfo.bmiHeader.biHeight = -bitmapHeight;
-  bmpInfo.bmiHeader.biPlanes = 1;
-  bmpInfo.bmiHeader.biBitCount = 32;
-  bmpInfo.bmiHeader.biCompression = BI_RGB;
+  buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+  buffer->info.bmiHeader.biWidth = buffer->width;
+  buffer->info.bmiHeader.biHeight = -buffer->height;
+  buffer->info.bmiHeader.biPlanes = 1;
+  buffer->info.bmiHeader.biBitCount = 32;
+  buffer->info.bmiHeader.biCompression = BI_RGB;
 
-  int bitmapMemorySize = bytesPerPixel*bitmapWidth*bitmapHeight;
-  bitmapMemory = VirtualAlloc(0,bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+  int bitmapMemorySize = buffer->bytesPerPixel * buffer->width * buffer->height;
+  buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+  buffer->pitch = buffer->bytesPerPixel * buffer->width;
 }
 
-void updateWindow(RECT *WindowRect, HDC deviceContext)
+void displayBufferInWindow(backBuffer *buffer, Dimension windowDimension, HDC deviceContext)
 {
-  int windowWidth = WindowRect->right - WindowRect->left;
-  int windowHeight = WindowRect->bottom - WindowRect->top;
   StretchDIBits(deviceContext,
-                0, 0, bitmapWidth, bitmapHeight,
-                0, 0, windowWidth, windowHeight,
-                bitmapMemory,
-                &bmpInfo,
+                0, 0, windowDimension.width, windowDimension.height,
+                0, 0, buffer->width, buffer->height,
+                buffer->memory,
+                &(buffer->info),
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -69,16 +95,6 @@ LRESULT CALLBACK MainWindowCallback(
     OutputDebugStringA("WM_ACTIVATEAPP\n");
   }
   break;
-  case WM_SIZE:
-  {
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    int width = clientRect.right - clientRect.left;
-    int height = clientRect.bottom - clientRect.top;
-    resizeDIBSecion(width, height);
-    OutputDebugStringA("WM_SIZE\n");
-  }
-  break;
   case WM_DESTROY:
   {
     running = false;
@@ -95,14 +111,9 @@ LRESULT CALLBACK MainWindowCallback(
   {
     PAINTSTRUCT paintStruct;
     HDC deviceContext = BeginPaint(hwnd, &paintStruct);
-    int x = paintStruct.rcPaint.left;
-    int y = paintStruct.rcPaint.top;
-    int width = paintStruct.rcPaint.right - paintStruct.rcPaint.left;
-    int height = paintStruct.rcPaint.bottom - paintStruct.rcPaint.top;
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    renderGradient(100);
-    updateWindow(&clientRect, deviceContext);
+    renderGradient(globalBackBuffer, 100);
+    Dimension dimension = getWindowDimension(hwnd);
+    displayBufferInWindow(&globalBackBuffer, dimension, deviceContext);
     EndPaint(hwnd, &paintStruct);
   }
   break;
@@ -121,7 +132,9 @@ int CALLBACK WinMain(
     LPSTR lpCmdLine,
     int nShowCmd)
 {
+
   WNDCLASSA windowClass = {};
+  resizeDIBSecion(&globalBackBuffer, 800, 800);
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = MainWindowCallback;
   windowClass.hInstance = hInstance;
@@ -138,18 +151,27 @@ int CALLBACK WinMain(
       int xOffset = 0;
       while (running)
       {
-        MSG lpMsg;
-        while (PeekMessageA(&lpMsg, 0, 0, 0, PM_REMOVE))
+        MSG message;
+        while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
         {
-          TranslateMessage(&lpMsg);
-          DispatchMessage(&lpMsg);
+          if (message.message == WM_QUIT)
+          {
+            running = false;
+          }
+          TranslateMessage(&message);
+          DispatchMessage(&message);
         }
-        
-        renderGradient(xOffset++);
+
+
+        XINPUT_STATE state;
+        ZeroMemory(&state, sizeof(XINPUT_STATE));
+        // Simply get the state of the controller from XInput.
+        XInputGetState(0, &state);
+
+        renderGradient(globalBackBuffer, xOffset++);
         HDC deviceContext = GetDC(windowHandle);
-        RECT clientRect;
-        GetClientRect(windowHandle, &clientRect);
-        updateWindow(&clientRect, deviceContext);
+        Dimension dimension = getWindowDimension(windowHandle);
+        displayBufferInWindow(&globalBackBuffer, dimension, deviceContext);
         ReleaseDC(windowHandle, deviceContext);
       }
     }
