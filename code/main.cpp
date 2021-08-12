@@ -1,7 +1,9 @@
 #include <Windows.h>
 #include <stdint.h>
 #include <Xinput.h>
+#include <stdio.h>
 static bool running;
+static int xOffset = 0;
 
 struct backBuffer
 {
@@ -117,6 +119,22 @@ LRESULT CALLBACK MainWindowCallback(
     EndPaint(hwnd, &paintStruct);
   }
   break;
+  case WM_KEYUP:
+  {
+    bool wasDown = (lParam & (1 << 30)) != 0;
+    bool isDown = (lParam & (1 << 31)) != 0;
+    if(wasDown)
+      OutputDebugStringA("was down\n");
+    if(isDown)
+      OutputDebugStringA("is down\n");
+    switch (wParam){
+      case VK_RIGHT:{
+        OutputDebugStringA("RIGHT");
+        xOffset+=50;
+      };
+    }
+  }
+  break;
   default:
   {
     result = DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -148,7 +166,7 @@ int CALLBACK WinMain(
     if (windowHandle)
     {
       running = true;
-      int xOffset = 0;
+
       while (running)
       {
         MSG message;
@@ -161,14 +179,30 @@ int CALLBACK WinMain(
           TranslateMessage(&message);
           DispatchMessage(&message);
         }
-
-
+    /*
+    DWORD dwResult;    
+    for (DWORD i=0; i< XUSER_MAX_COUNT; i++ )
+    {
         XINPUT_STATE state;
-        ZeroMemory(&state, sizeof(XINPUT_STATE));
-        // Simply get the state of the controller from XInput.
-        XInputGetState(0, &state);
+        ZeroMemory( &state, sizeof(XINPUT_STATE) );
 
-        renderGradient(globalBackBuffer, xOffset++);
+        // Simply get the state of the controller from XInput.
+        dwResult = XInputGetState( i, &state );
+        char buffer[32];
+        sprintf(buffer, "%d", state.dwPacketNumber);
+        OutputDebugStringA(buffer);
+        
+        if( dwResult == ERROR_SUCCESS )
+        {
+            // Controller is connected
+        }
+        else
+        {
+            // Controller is not connected
+        }
+    }
+*/
+        renderGradient(globalBackBuffer, xOffset);
         HDC deviceContext = GetDC(windowHandle);
         Dimension dimension = getWindowDimension(windowHandle);
         displayBufferInWindow(&globalBackBuffer, dimension, deviceContext);
