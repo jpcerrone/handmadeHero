@@ -119,10 +119,14 @@ LRESULT CALLBACK MainWindowCallback(
     EndPaint(hwnd, &paintStruct);
   }
   break;
+  case WM_SYSKEYDOWN:
+  case WM_SYSKEYUP:
+  case WM_KEYDOWN:
   case WM_KEYUP:
   {
     bool wasDown = (lParam & (1 << 30)) != 0;
     bool isDown = (lParam & (1 << 31)) != 0;
+    bool isAltPressed = (lParam & (1 << 29)) != 0;
     if(wasDown)
       OutputDebugStringA("was down\n");
     if(isDown)
@@ -132,7 +136,13 @@ LRESULT CALLBACK MainWindowCallback(
         OutputDebugStringA("RIGHT");
         xOffset+=50;
       };
+      case VK_F4:{
+        if(isAltPressed){
+          running = false;
+        }
+      }
     }
+  
   }
   break;
   default:
