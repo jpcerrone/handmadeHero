@@ -2,9 +2,10 @@
 #include <stdint.h>
 #include <Xinput.h>
 #include <stdio.h>
+#include  <xaudio2.h>
+
 static bool running;
 static int xOffset = 0;
-
 struct backBuffer
 {
   BITMAPINFO info;
@@ -32,6 +33,72 @@ Dimension getWindowDimension(HWND window)
   d.height = rect.bottom - rect.top;
   return d;
 }
+
+HRESULT initSound(){
+    //Sound
+  HRESULT hr;
+  hr = CoInitializeEx( nullptr, COINIT_MULTITHREADED );
+  if (FAILED(hr))
+    return hr;
+  IXAudio2* audioObject;
+  if(FAILED(hr = XAudio2Create(&audioObject, 0, XAUDIO2_DEFAULT_PROCESSOR))){
+    return hr;
+  };
+  IXAudio2MasteringVoice *masteringVoice;
+  if(FAILED(hr = audioObject->CreateMasteringVoice(&masteringVoice))){
+    return hr;
+  }
+  int wBitsPerSample = 16;
+  int sampleRate = 44100;
+  int seconds = 1;
+  // CHECK 4th PARAM
+  WAVEFORMATEX wfx = {WAVE_FORMAT_PCM, 2, sampleRate, sampleRate*(2*wBitsPerSample)/8, (2*wBitsPerSample)/8, wBitsPerSample, 0} ;
+  BYTE *pDataBuffer = new BYTE[(wBitsPerSample*sampleRate*seconds*2)/8];
+  int bufferElements = (wBitsPerSample*sampleRate*seconds*2)/8;
+  int16_t volume = 1000;
+  
+  int16_t *sample = (int16_t *)pDataBuffer;
+  int frecuencyHz = 200;
+  int cycles = (sampleRate/frecuencyHz);
+  int counter = 0;
+  for(int i=0; i < bufferElements/8 ;i++){
+    // one sample at a time
+    if(counter < cycles){
+      *(sample)= volume;
+      *(sample+1) = volume;
+      *(sample+2) = volume;
+      *(sample+3) = volume;
+    }
+    else{
+      *(sample) = -volume;
+      *(sample+1) = -volume;
+      *(sample+2) = -volume;
+      *(sample+3) = -volume;
+    }
+    counter++;
+    if (counter == cycles*2){
+      counter = 0;
+    }
+    else 
+    sample = sample+4;
+  }
+  
+  XAUDIO2_BUFFER buffer = {0};
+  buffer.Flags = XAUDIO2_END_OF_STREAM;
+  buffer.AudioBytes = bufferElements;
+  buffer.pAudioData = pDataBuffer;
+  buffer.LoopLength = sampleRate;
+  buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+  IXAudio2SourceVoice* pSourceVoice;
+  if( FAILED(hr = audioObject->CreateSourceVoice( &pSourceVoice, (WAVEFORMATEX*)&wfx ) ) ) return hr;
+
+  if( FAILED(hr = pSourceVoice->SubmitSourceBuffer( &buffer ) ) )
+    return hr;
+  
+  if ( FAILED(hr = pSourceVoice->Start( 0 ) ) )
+    return hr;
+}
+
 
 void renderGradient(backBuffer buffer, int xOffset)
 {
@@ -68,7 +135,7 @@ void resizeDIBSecion(backBuffer *buffer, int width, int height)
   buffer->info.bmiHeader.biCompression = BI_RGB;
 
   int bitmapMemorySize = buffer->bytesPerPixel * buffer->width * buffer->height;
-  buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+  buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
   buffer->pitch = buffer->bytesPerPixel * buffer->width;
 }
 
@@ -160,7 +227,8 @@ int CALLBACK WinMain(
     LPSTR lpCmdLine,
     int nShowCmd)
 {
-
+  
+  //Window
   WNDCLASSA windowClass = {};
   resizeDIBSecion(&globalBackBuffer, 800, 800);
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -173,10 +241,13 @@ int CALLBACK WinMain(
                                         "Handmade Hero", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                         0, 0, hInstance, 0);
+    if(SUCCEEDED(initSound())){
+      OutputDebugStringA("Sound initialized\n");
+    }
+    
     if (windowHandle)
     {
       running = true;
-
       while (running)
       {
         MSG message;
@@ -212,6 +283,7 @@ int CALLBACK WinMain(
         }
     }
 */
+        //playSound();
         renderGradient(globalBackBuffer, xOffset);
         HDC deviceContext = GetDC(windowHandle);
         Dimension dimension = getWindowDimension(windowHandle);
