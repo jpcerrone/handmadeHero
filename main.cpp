@@ -1,15 +1,59 @@
 #include <iostream>
 #include <windows.h>
 
-bool gameRunning;
+struct Dimension{
+    int width, height;
+};
+
+static bool gameRunning;
+static Dimension windowSize;
+void* bitsMapMemory;
+BITMAPINFO bmInfo;
+
+void resizeDibSection(int width, int height){
+    if (bitsMapMemory){
+        VirtualFree(bitsMapMemory, 0, MEM_RELEASE);
+    }
+
+    BITMAPINFOHEADER bmInfoHeader = {};
+    bmInfoHeader.biSize = sizeof(bmInfoHeader);
+    bmInfoHeader.biCompression = BI_RGB;
+    bmInfoHeader.biWidth = width;
+    bmInfoHeader.biHeight = -height;
+    bmInfoHeader.biPlanes = 1; // MSDN sais it must be set to 1, legacy reasons
+    bmInfoHeader.biBitCount = 32; // R+G+B+padding each 8bits
+    bmInfo.bmiHeader = bmInfoHeader;
+
+    bitsMapMemory = VirtualAlloc(0, width*height*4, MEM_COMMIT, PAGE_READWRITE);
+
+    // pixel = 4B = 32b
+    unsigned int *pixel = (unsigned int*) bitsMapMemory;
+    for (int y=0; y < height;y++){
+        for (int x=0; x < width;x++){
+            *pixel = 0x00FF0000;
+            pixel++;
+        }
+    }
+}
+
+void updateWindow(HDC deviceContext, int srcX, int srcY, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void* bitMapMemory, BITMAPINFO bitmapInfo){
+    StretchDIBits(deviceContext, 0, 0, srcWidth, srcHeight, 0, 0, windowWidth, windowHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+}
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
-    PAINTSTRUCT lpPaint;
     LRESULT returnVal = 0;
-    int width = lpPaint.rcPaint.right - lpPaint.rcPaint.left;
-    int height = lpPaint.rcPaint.bottom - lpPaint.rcPaint.top;
     switch (uMsg)
     {
+        case WM_SIZE:
+        {
+            RECT windowRect;
+            GetClientRect(hWnd, &windowRect);
+            int width = windowRect.right - windowRect.left;
+            int height = windowRect.bottom - windowRect.top;
+            windowSize = {width, height};
+            resizeDibSection(width, height);
+
+        } break;
         case WM_CLOSE:
         {
             if (MessageBox(hWnd, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO) == IDYES){
@@ -23,13 +67,15 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
             DestroyWindow(hWnd);            
         } break;
         case WM_PAINT:
-        {
-            static DWORD color = BLACKNESS;
-            HDC hdc; 
-            hdc = BeginPaint(hWnd, &lpPaint);
-            color = (color == BLACKNESS) ? WHITENESS : BLACKNESS;
-            PatBlt(hdc, lpPaint.rcPaint.left, lpPaint.rcPaint.top, width, height, color);
-            EndPaint(hWnd, &lpPaint);
+        {         
+            PAINTSTRUCT paintStruct;
+            HDC hdc = BeginPaint(hWnd, &paintStruct);
+            int paintStructWidth = paintStruct.rcPaint.right - paintStruct.rcPaint.left;
+            int paintStructHeight = paintStruct.rcPaint.bottom - paintStruct.rcPaint.top;
+            int x = paintStruct.rcPaint.left;
+            int y = paintStruct.rcPaint.top;
+            updateWindow(hdc, x, y, paintStructWidth, paintStructHeight, windowSize.width, windowSize.height,  bitsMapMemory, bmInfo);
+            EndPaint(hWnd, &paintStruct);
         } break;
         default:
         {
