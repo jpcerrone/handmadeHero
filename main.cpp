@@ -6,14 +6,35 @@ struct Dimension{
 };
 
 static bool gameRunning;
-static Dimension windowSize;
+
+static Dimension clientWindowDimensions;
 void* bitsMapMemory;
 BITMAPINFO bmInfo;
+int xOffset = 0;
+
+static Dimension bitmapDimensions;
+
+void renderGradient(int xOffset){
+    // pixel = 4B = 32b
+    uint32_t *pixel = (uint32_t*) bitsMapMemory;
+    for (int y=0; y < bitmapDimensions.height;y++){
+        for (int x=0; x < bitmapDimensions.width;x++){
+            uint8_t red = 0x00;
+            uint8_t green = 0;
+            uint8_t blue = x + xOffset;
+            //*pixel = 0x000000FF; //xx RR GG BB -> little endian, most significant bits get loaded last (xx)
+            *pixel = (green << 8 ) | blue;
+            pixel++;
+        }
+    }
+}
 
 void resizeDibSection(int width, int height){
     if (bitsMapMemory){
         VirtualFree(bitsMapMemory, 0, MEM_RELEASE);
     }
+
+    bitmapDimensions = {width, height};
 
     BITMAPINFOHEADER bmInfoHeader = {};
     bmInfoHeader.biSize = sizeof(bmInfoHeader);
@@ -25,15 +46,6 @@ void resizeDibSection(int width, int height){
     bmInfo.bmiHeader = bmInfoHeader;
 
     bitsMapMemory = VirtualAlloc(0, width*height*4, MEM_COMMIT, PAGE_READWRITE);
-
-    // pixel = 4B = 32b
-    unsigned int *pixel = (unsigned int*) bitsMapMemory;
-    for (int y=0; y < height;y++){
-        for (int x=0; x < width;x++){
-            *pixel = 0x00FF0000;
-            pixel++;
-        }
-    }
 }
 
 void updateWindow(HDC deviceContext, int srcX, int srcY, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void* bitMapMemory, BITMAPINFO bitmapInfo){
@@ -46,16 +58,18 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
     {
         case WM_SIZE:
         {
-            RECT windowRect;
-            GetClientRect(hWnd, &windowRect);
-            int width = windowRect.right - windowRect.left;
-            int height = windowRect.bottom - windowRect.top;
-            windowSize = {width, height};
+            RECT clientRect;
+            GetClientRect(hWnd, &clientRect);
+            int width = clientRect.right - clientRect.left;
+            int height = clientRect.bottom - clientRect.top;
+            clientWindowDimensions = {width, height};
             resizeDibSection(width, height);
-
         } break;
         case WM_CLOSE:
         {
+            #ifdef _DEBUG
+                std::cout << "DEBUG: exit popup" << std::endl;
+            #endif 
             if (MessageBox(hWnd, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO) == IDYES){
                 gameRunning = false;
                 DestroyWindow(hWnd);            
@@ -67,15 +81,13 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
             DestroyWindow(hWnd);            
         } break;
         case WM_PAINT:
-        {         
+        {   
             PAINTSTRUCT paintStruct;
             HDC hdc = BeginPaint(hWnd, &paintStruct);
-            int paintStructWidth = paintStruct.rcPaint.right - paintStruct.rcPaint.left;
-            int paintStructHeight = paintStruct.rcPaint.bottom - paintStruct.rcPaint.top;
-            int x = paintStruct.rcPaint.left;
-            int y = paintStruct.rcPaint.top;
-            updateWindow(hdc, x, y, paintStructWidth, paintStructHeight, windowSize.width, windowSize.height,  bitsMapMemory, bmInfo);
-            EndPaint(hWnd, &paintStruct);
+            xOffset++;
+            renderGradient(xOffset);
+            updateWindow(hdc, 0, 0, bitmapDimensions.width, bitmapDimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  bitsMapMemory, bmInfo);
+            EndPaint(hWnd, &paintStruct);      
         } break;
         default:
         {
@@ -102,11 +114,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (windowHandle){
             while(gameRunning){
                 MSG message;
-                BOOL messageResult = GetMessage(&message, 0, 0, 0);
-                if (messageResult > 0){
+                if (PeekMessage(&message, 0, 0, 0, PM_REMOVE)){
                     TranslateMessage(&message);
                     DispatchMessage(&message);
                 }
+                if (message.message == WM_QUIT){
+                    gameRunning = false;
+                    break;
+                }
+                renderGradient(xOffset);
+                xOffset++;
+                HDC windowDeviceContext = GetDC(windowHandle);
+                updateWindow(windowDeviceContext, 0, 0, bitmapDimensions.width, bitmapDimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  bitsMapMemory, bmInfo);
+                ReleaseDC(windowHandle, windowDeviceContext);
             }
         }
         else{
