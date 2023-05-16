@@ -17,6 +17,44 @@ struct Bitmap{
 static Dimension clientWindowDimensions;
 static Bitmap globalBitmap;
 
+void renderArgFlag(){
+    const uint32_t lightBlueColor = 0xadd8e6; //RGB
+    const uint32_t whiteColor = 0xFFFFFF; //RGB
+    uint32_t *pixel = (uint32_t*) globalBitmap.memory;
+    for (int y=0; y < globalBitmap.dimensions.height/3;y++){
+        for (int x=0; x < globalBitmap.dimensions.width;x++){
+            *pixel = lightBlueColor;
+            pixel++;
+        }
+    }
+    for (int y=globalBitmap.dimensions.height/3; y < globalBitmap.dimensions.height*2/3;y++){
+        for (int x=0; x < globalBitmap.dimensions.width;x++){
+            *pixel = whiteColor;
+            pixel++;
+        }
+    }
+    for (int y=globalBitmap.dimensions.height*2/3; y < globalBitmap.dimensions.height;y++){
+        for (int x=0; x < globalBitmap.dimensions.width;x++){
+            *pixel = lightBlueColor;
+            pixel++;
+        }
+    }
+
+    Dimension sunPosition = {globalBitmap.dimensions.width/2, globalBitmap.dimensions.height/2};
+    int radius = 100;
+    const uint32_t yellowColor = 0xFFBF00; //RGB
+    pixel = (uint32_t*) globalBitmap.memory;
+    pixel += (globalBitmap.dimensions.height/2 - radius) * (globalBitmap.dimensions.width) + (globalBitmap.dimensions.width/2 - radius);
+    for (int y=globalBitmap.dimensions.height/2 - radius; y < globalBitmap.dimensions.height/2 + radius ;y++){
+        for (int x=globalBitmap.dimensions.width/2 - radius; x < globalBitmap.dimensions.width/2 + radius;x++){
+            *pixel = yellowColor;
+            pixel++;
+        }
+        pixel += globalBitmap.dimensions.width - 2*radius; 
+    }
+
+}
+
 void renderGradient(int xOffset){
     // pixel = 4B = 32b
     uint32_t *pixel = (uint32_t*) globalBitmap.memory;
@@ -51,7 +89,7 @@ void resizeDibSection(int width, int height){
     globalBitmap.memory = VirtualAlloc(0, width*height*4, MEM_COMMIT, PAGE_READWRITE);
 }
 
-void updateWindow(HDC deviceContext, int srcX, int srcY, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void* bitMapMemory, BITMAPINFO bitmapInfo){
+void updateWindow(HDC deviceContext, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void* bitMapMemory, BITMAPINFO bitmapInfo){
     StretchDIBits(deviceContext, 0, 0, windowWidth, windowHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -91,8 +129,9 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
         {   
             PAINTSTRUCT paintStruct;
             HDC hdc = BeginPaint(windowHandle, &paintStruct);
-            renderGradient(xOffset);
-            updateWindow(hdc, 0, 0, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  globalBitmap.memory, globalBitmap.info);
+            //renderGradient(xOffset);
+            renderArgFlag();
+            updateWindow(hdc, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  globalBitmap.memory, globalBitmap.info);
             EndPaint(windowHandle, &paintStruct);      
         } break;
         default:
@@ -110,7 +149,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     WNDCLASS wc = {};
     gameRunning = true;
 
-    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 	wc.lpfnWndProc = WindowProc;
 	wc.hInstance = hInstance ? hInstance : GetModuleHandle(nullptr);
 	wc.lpszClassName = "Engine";
@@ -121,6 +160,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (RegisterClass(&wc)){
         HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
         if (windowHandle){
+            HDC windowDeviceContext = GetDC(windowHandle);
             while(gameRunning){
                 MSG message;
                 if (PeekMessage(&message, 0, 0, 0, PM_REMOVE)){
@@ -131,11 +171,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     gameRunning = false;
                     break;
                 }
-                renderGradient(xOffset);
+                //renderGradient(xOffset);
+                renderArgFlag();
                 xOffset++;
-                HDC windowDeviceContext = GetDC(windowHandle);
-                updateWindow(windowDeviceContext, 0, 0, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  globalBitmap.memory, globalBitmap.info);
-                ReleaseDC(windowHandle, windowDeviceContext);
+                updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height,  globalBitmap.memory, globalBitmap.info);
             }
         }
         else{
