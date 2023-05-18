@@ -1,5 +1,6 @@
 #include <iostream>
 #include <windows.h>
+#include <Xinput.h>
 
 struct Dimension{
     int width, height;
@@ -16,6 +17,11 @@ struct Bitmap{
 
 static Dimension clientWindowDimensions;
 static Bitmap globalBitmap;
+
+// Define a function pointer with the XInputGetState signature
+typedef DWORD(WINAPI *XInputGetState_t)(DWORD dwUserIndex, XINPUT_STATE *pState);
+XInputGetState_t xInputGetState;
+#define XInputGetState xInputGetState // Use the same name as defined in the dll
 
 void renderArgFlag(){
     const uint32_t lightBlueColor = 0xadd8e6; //RGB
@@ -105,7 +111,14 @@ Dimension getWindowDimension(HWND windowHandle){
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam){
     LRESULT returnVal = 0;
     switch (uMsg)
-    {
+    {  
+        case WM_KEYDOWN:
+        {
+            bool wasDown = lParam & (1<<30);
+            if (wParam == VK_SPACE){
+                std::cout << "SPACE" << wasDown <<  std::endl;
+            }
+        } break;
         case WM_SIZE:
         {
             clientWindowDimensions = getWindowDimension(windowHandle);
@@ -142,6 +155,18 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     return returnVal;
 };
 
+void loadXInput(){
+    HMODULE handle = LoadLibrary("Xinput1_4.dll");
+    if (handle){
+        std::cout << "Loaded Xinput1_4.dll" << std::endl;
+    } else{
+        std::cout << "Couldnt find Xinput dll" << std::endl;
+        return;
+    }
+    xInputGetState = (XInputGetState_t)GetProcAddress(handle, "XInputGetState");
+}
+
+
 // hInstance: handle to the .exe
 // hPrevInstance: not used since 16bit windows
 // WINAPI: calling convention, tells compiler order of parameters
@@ -157,11 +182,42 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     globalBitmap.dimensions = {1920,1080};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
+    //  __FILE__, __LINE__,  try these out !
+    loadXInput();
+
     if (RegisterClass(&wc)){
         HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
         if (windowHandle){
             HDC windowDeviceContext = GetDC(windowHandle);
             while(gameRunning){
+                // Input...
+                DWORD dwResult;    
+                for (DWORD i=0; i< XUSER_MAX_COUNT; i++ )
+                {
+                    XINPUT_STATE state;
+                    ZeroMemory( &state, sizeof(XINPUT_STATE) );
+
+                    // Simply get the state of the controller from XInput.
+                    dwResult = XInputGetState( i, &state );
+
+                    if( dwResult == ERROR_SUCCESS )
+                    {
+                        // Controller is connected
+                        WORD buttons = state.Gamepad.wButtons;
+                        if (buttons & XINPUT_GAMEPAD_A){ // ex: buttons:0101, A:0001, buttons & A:0001, casting anything other than 0 to bool returns true.
+                            std::cout << "A" << std::endl;
+                        }
+                        if (buttons & XINPUT_GAMEPAD_B){
+                            std::cout << "B" << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        // Controller is not connected
+                    }
+                }
+
+
                 MSG message;
                 if (PeekMessage(&message, 0, 0, 0, PM_REMOVE)){
                     TranslateMessage(&message);
