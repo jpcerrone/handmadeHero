@@ -112,6 +112,18 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     LRESULT returnVal = 0;
     switch (uMsg)
     {  
+        case WM_SYSKEYDOWN:{
+            bool isAltDown = lParam & (1<<29);
+            if (wParam == VK_F4 && isAltDown){
+                gameRunning = false;
+            }
+        } break;
+        case WM_SYSKEYUP:{
+
+        } break;
+        case WM_KEYUP:{
+
+        } break;
         case WM_KEYDOWN:
         {
             bool wasDown = lParam & (1<<30);
