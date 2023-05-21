@@ -1,6 +1,15 @@
 #include <iostream>
 #include <windows.h>
 #include <Xinput.h>
+#include <Audioclient.h>
+#include <Audiopolicy.h>
+//#include <ShObjIdl.h>
+//#include <ShObjIdl_core.h>
+#include <shobjidl.h> 
+//#include <mmdeviceapi.h>
+
+/* extern const GUID CLSID_FileOpenDialog;
+extern const GUID IID_IFileOpenDialog;  */
 
 struct Dimension{
     int width, height;
@@ -108,6 +117,25 @@ Dimension getWindowDimension(HWND windowHandle){
     return retDimension;
 }
 
+void openFileAndDisplayName(){
+    IFileOpenDialog *openDialog;
+    // Create the FileOpenDialog object.
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&openDialog)))){
+        if (SUCCEEDED(openDialog->Show(NULL))){
+            IShellItem *itemSelected;
+            if (SUCCEEDED (openDialog->GetResult(&itemSelected))){
+                PWSTR filePathOfItem;
+                if (SUCCEEDED(itemSelected->GetDisplayName(SIGDN_FILESYSPATH, &filePathOfItem))){
+                    MessageBoxW(NULL, filePathOfItem, L"File Path", MB_OK);
+                    CoTaskMemFree(filePathOfItem);
+                }
+            }
+            itemSelected->Release();
+        }
+    }
+    openDialog->Release();
+}
+
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam){
     LRESULT returnVal = 0;
     switch (uMsg)
@@ -128,6 +156,9 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
         {
             bool wasDown = lParam & (1<<30);
             if (wParam == VK_SPACE){
+                if (!wasDown){
+                    openFileAndDisplayName();
+                }
                 std::cout << "SPACE" << wasDown <<  std::endl;
             }
         } break;
@@ -178,6 +209,19 @@ void loadXInput(){
     xInputGetState = (XInputGetState_t)GetProcAddress(handle, "XInputGetState");
 }
 
+void playAudioStream(){
+    CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+    // Audio init
+/*     void *interfaceRef;
+    const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
+    const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
+    pEnumerator
+    HRESULT hr = CoCreateInstance(
+         CLSID_MMDeviceEnumerator, NULL,
+         CLSCTX_ALL, IID_IMMDeviceEnumerator,
+         (void**)&pEnumerator); */
+
+}
 
 // hInstance: handle to the .exe
 // hPrevInstance: not used since 16bit windows
@@ -194,8 +238,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     globalBitmap.dimensions = {1920,1080};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
+    CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
     //  __FILE__, __LINE__,  try these out !
     loadXInput();
+    playAudioStream();
+
 
     if (RegisterClass(&wc)){
         HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
@@ -252,5 +299,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }else{
         std::cout << "Failure registering class";
     }
+    CoUninitialize();
     return 0;
 };

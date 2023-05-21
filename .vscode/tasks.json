@@ -12,6 +12,8 @@
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe",
                 "-lgdi32",
+                "-lole32",
+                "-luuid"
                 //"-D_DEBUG"
             ],
             "options": {
