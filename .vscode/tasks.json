@@ -13,7 +13,8 @@
                 "${fileDirname}\\${fileBasenameNoExtension}.exe",
                 "-lgdi32",
                 "-lole32",
-                "-luuid"
+                "-lavrt",
+                "-l:libksguid.a"
                 //"-D_DEBUG"
             ],
             "options": {
