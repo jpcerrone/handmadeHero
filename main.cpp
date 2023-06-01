@@ -11,6 +11,7 @@
 #include <avrt.h>
 #include <assert.h>
 #include <mmsystem.h>
+#include <math.h>
 
 #define REFTIMES_PER_SEC 10'000'000 // 100 nanoscend units, 1 seconds
 #define REFTIMES_PER_MILLISEC 10'000
@@ -168,16 +169,46 @@ void openFileAndDisplayName()
         openDialog->Release();
     }
 }
-
-HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, WAVEFORMATEX *mixFormat, int &frameIndex)
+struct AudioState_t
 {
-    int frequency = 220;
-    int samplesPerWave = mixFormat->nSamplesPerSec / frequency;
-    
+    WAVEFORMATEX *myFormat;
+    IAudioClient *audioClient;
+    IAudioRenderClient *renderClient;
+    BYTE *data;
+    UINT32 bufferFrameCount;
+    int frameIndex;
+    int frequency = 440;
+};
+static AudioState_t AudioState;
+
+HRESULT LoadSineWave(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
+{
+    int samplesPerWave = samplesPerSec / AudioState.frequency;
+
+    int16_t volume = 3000;
+    int16_t *sample = (int16_t *)bufferLocation;
+    for (int i = AudioState.frameIndex; i < AudioState.frameIndex + framesToWrite; i++)
+    { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
+        {
+            float frameIndexInTermsOfPI = 2 * (float)M_PI * ((float)i / (float)samplesPerWave);
+            float sinValue = sinf(frameIndexInTermsOfPI);
+            *sample = sinValue * volume;
+            *(sample + 1) = sinValue * volume;
+        }
+        sample += 2;
+    }
+    AudioState.frameIndex = (AudioState.frameIndex + framesToWrite) % samplesPerWave;
+    // flags = AUDCLNT_BUFFERFLAGS_SILENT;
+    return S_OK;
+}
+
+HRESULT LoadSquareWave(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
+{
+    int samplesPerWave = samplesPerSec / AudioState.frequency;
+
     int16_t volume = 500;
     int16_t *sample = (int16_t *)bufferLocation;
-    int i;
-    for (i = frameIndex; i < frameIndex + framesToWrite; i++)
+    for (int i = AudioState.frameIndex; i < AudioState.frameIndex + framesToWrite; i++)
     { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
         if ((i / (samplesPerWave / 2)) % 2)
         {
@@ -191,7 +222,7 @@ HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, WAVEFORMATEX *mixFo
         }
         sample += 2;
     }
-    frameIndex = (frameIndex + framesToWrite) % samplesPerWave;
+    AudioState.frameIndex = (AudioState.frameIndex + framesToWrite) % samplesPerWave;
     // flags = AUDCLNT_BUFFERFLAGS_SILENT;
     return S_OK;
     // IMPORTANT: If the LoadData function is able to write at least one frame
@@ -199,8 +230,15 @@ HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, WAVEFORMATEX *mixFo
     // the specified number of frames, then it writes silence to the remaining frames.
 }
 
-void playAudioStream()
+HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
 {
+    return LoadSineWave(framesToWrite, bufferLocation, samplesPerSec);
+}
+
+void initAudioStream()
+{
+    int bufferSizeInSeconds = REFTIMES_PER_SEC/15;
+
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
     hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
@@ -210,79 +248,74 @@ void playAudioStream()
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
     assert(SUCCEEDED(hr));
 
-    IAudioClient *audioClient;
-    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void **)&audioClient);
+    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void **)&(AudioState.audioClient));
     assert(SUCCEEDED(hr));
 
-    WAVEFORMATEX *myFormat;
-    hr = audioClient->GetMixFormat(&myFormat);
+    hr = AudioState.audioClient->GetMixFormat(&AudioState.myFormat);
     assert(SUCCEEDED(hr));
 
-    WAVEFORMATEXTENSIBLE *waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(myFormat);
+    WAVEFORMATEXTENSIBLE *waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(AudioState.myFormat);
     waveFormatExtensible->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
     waveFormatExtensible->Format.wBitsPerSample = 16;
-    waveFormatExtensible->Format.nBlockAlign = (myFormat->wBitsPerSample / 8) * myFormat->nChannels;
+    waveFormatExtensible->Format.nBlockAlign = (AudioState.myFormat->wBitsPerSample / 8) * AudioState.myFormat->nChannels;
     waveFormatExtensible->Format.nAvgBytesPerSec = waveFormatExtensible->Format.nSamplesPerSec * waveFormatExtensible->Format.nBlockAlign;
     waveFormatExtensible->Samples.wValidBitsPerSample = 16;
 
-    hr = audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, REFTIMES_PER_SEC /* 1 sec*/, 0, myFormat, NULL);
+    hr = AudioState.audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, bufferSizeInSeconds /* 1 sec*/, 0, AudioState.myFormat, NULL);
     assert(SUCCEEDED(hr));
 
-    UINT32 bufferFrameCount;
-    hr = audioClient->GetBufferSize(&bufferFrameCount);
+    hr = AudioState.audioClient->GetBufferSize(&AudioState.bufferFrameCount);
     assert(SUCCEEDED(hr));
 
-    IAudioRenderClient *renderClient;
-    hr = audioClient->GetService(IID_PPV_ARGS(&renderClient));
+    hr = AudioState.audioClient->GetService(IID_PPV_ARGS(&AudioState.renderClient));
     assert(SUCCEEDED(hr));
 
-    BYTE *data; // Pointer to next available space to write data (&data)
-    hr = renderClient->GetBuffer(bufferFrameCount, &data);
+    hr = AudioState.renderClient->GetBuffer(AudioState.bufferFrameCount, &AudioState.data);
     assert(SUCCEEDED(hr));
 
     // Load Data
-    int frameIndex = 0;
-    hr = LoadData(bufferFrameCount, data, myFormat, frameIndex);
+    AudioState.frameIndex = 0;
+    hr = LoadData(AudioState.bufferFrameCount, AudioState.data, AudioState.myFormat->nSamplesPerSec);
     assert(SUCCEEDED(hr));
 
-    hr = renderClient->ReleaseBuffer(bufferFrameCount, AUDCLNT_BUFFERFLAGS_SILENT); // This flag eliminates the need for the client to explicitly write silence data to the rendering buffer.
+    hr = AudioState.renderClient->ReleaseBuffer(AudioState.bufferFrameCount, AUDCLNT_BUFFERFLAGS_SILENT); // This flag eliminates the need for the client to explicitly write silence AudioState.data to the rendering buffer.
     assert(SUCCEEDED(hr));
 
+    hr = AudioState.audioClient->Start();
+    assert(SUCCEEDED(hr));
+
+    // Should release all these in a destructor maybe
+
+    /*         AudioState.renderClient->Release();
+        CoTaskMemFree(&AudioState.myFormat);
+        audioClient->Release();
+        device->Release();
+        enumerator->Release(); */
+}
+
+void playAudioStream()
+{
     // Calculate the actual duration of the allocated buffer.
     REFERENCE_TIME hnsActualDuration = (double)REFTIMES_PER_SEC *
-                                       bufferFrameCount / myFormat->nSamplesPerSec;
-
-    hr = audioClient->Start();
+                                       AudioState.bufferFrameCount / AudioState.myFormat->nSamplesPerSec;
+    // See how much buffer space is available.
+    UINT32 numFramesPadding;
+    HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
     assert(SUCCEEDED(hr));
 
-    while (true)
-    {
+    // NOTE(nick): output sound
+    UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
 
-        Sleep((DWORD)(hnsActualDuration / REFTIMES_PER_MILLISEC / 2));
-        // See how much buffer space is available.
-        UINT32 numFramesPadding;
-        HRESULT hr = audioClient->GetCurrentPadding(&numFramesPadding);
-        assert(SUCCEEDED(hr));
+    // Grab the next empty buffer from the audio device.
+    hr = AudioState.renderClient->GetBuffer(numFramesAvailable, &AudioState.data);
+    assert(SUCCEEDED(hr));
 
-        // NOTE(nick): output sound
-        UINT32 numFramesAvailable = bufferFrameCount - numFramesPadding;
+    // Load the buffer with AudioState.data from the audio source.
+    hr = LoadData(numFramesAvailable, AudioState.data, AudioState.myFormat->nSamplesPerSec);
+    assert(SUCCEEDED(hr));
 
-        // Grab the next empty buffer from the audio device.
-        hr = renderClient->GetBuffer(numFramesAvailable, &data);
-        assert(SUCCEEDED(hr));
-
-        // Load the buffer with data from the audio source.
-        hr = LoadData(numFramesAvailable, data, myFormat, frameIndex);
-        assert(SUCCEEDED(hr));
-
-        hr = renderClient->ReleaseBuffer(numFramesAvailable, 0);
-        assert(SUCCEEDED(hr));
-    }
-    renderClient->Release();
-    CoTaskMemFree(&myFormat);
-    audioClient->Release();
-    device->Release();
-    enumerator->Release();
+    hr = AudioState.renderClient->ReleaseBuffer(numFramesAvailable, 0);
+    assert(SUCCEEDED(hr));
 }
 
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -317,6 +350,12 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
                 openFileAndDisplayName();
             }
             std::cout << "SPACE" << wasDown << std::endl;
+        }
+        if (wParam == VK_UP){
+            AudioState.frequency *= 2;
+        }
+        if (wParam == VK_DOWN){
+            AudioState.frequency /= 2;
         }
     }
     break;
@@ -396,7 +435,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
     //  __FILE__, __LINE__,  try these out !
     loadXInput();
-    playAudioStream();
+    initAudioStream();
 
     if (RegisterClass(&wc))
     {
@@ -448,6 +487,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 }
                 // renderGradient(xOffset);
                 renderArgFlag();
+                playAudioStream();
                 xOffset++;
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
             }
