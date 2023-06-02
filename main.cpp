@@ -176,8 +176,8 @@ struct AudioState_t
     IAudioRenderClient *renderClient;
     BYTE *data;
     UINT32 bufferFrameCount;
-    int frameIndex;
-    int frequency = 440;
+    float waveOffset;
+    float frequency = 440;
 };
 static AudioState_t AudioState;
 
@@ -187,47 +187,18 @@ HRESULT LoadSineWave(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerS
 
     int16_t volume = 3000;
     int16_t *sample = (int16_t *)bufferLocation;
-    for (int i = AudioState.frameIndex; i < AudioState.frameIndex + framesToWrite; i++)
+    for (int i =0; i < framesToWrite; i++)
     { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
         {
-            float frameIndexInTermsOfPI = 2 * (float)M_PI * ((float)i / (float)samplesPerWave);
-            float sinValue = sinf(frameIndexInTermsOfPI);
+            AudioState.waveOffset += ((float)1 / (float)samplesPerWave);
+            float sinValue = sinf(2.0f * (float)M_PI * AudioState.waveOffset);
             *sample = sinValue * volume;
             *(sample + 1) = sinValue * volume;
         }
         sample += 2;
     }
-    AudioState.frameIndex = (AudioState.frameIndex + framesToWrite) % samplesPerWave;
-    // flags = AUDCLNT_BUFFERFLAGS_SILENT;
+    AudioState.waveOffset -= (int)AudioState.waveOffset; // Keep it between 0 and 1 to avoid overflow.
     return S_OK;
-}
-
-HRESULT LoadSquareWave(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
-{
-    int samplesPerWave = samplesPerSec / AudioState.frequency;
-
-    int16_t volume = 500;
-    int16_t *sample = (int16_t *)bufferLocation;
-    for (int i = AudioState.frameIndex; i < AudioState.frameIndex + framesToWrite; i++)
-    { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
-        if ((i / (samplesPerWave / 2)) % 2)
-        {
-            *sample = volume;
-            *(sample + 1) = volume;
-        }
-        else
-        {
-            *sample = -volume;
-            *(sample + 1) = -volume;
-        }
-        sample += 2;
-    }
-    AudioState.frameIndex = (AudioState.frameIndex + framesToWrite) % samplesPerWave;
-    // flags = AUDCLNT_BUFFERFLAGS_SILENT;
-    return S_OK;
-    // IMPORTANT: If the LoadData function is able to write at least one frame
-    // to the specified buffer location but runs out of data before it has written
-    // the specified number of frames, then it writes silence to the remaining frames.
 }
 
 HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
@@ -274,7 +245,7 @@ void initAudioStream()
     assert(SUCCEEDED(hr));
 
     // Load Data
-    AudioState.frameIndex = 0;
+    AudioState.waveOffset = 0;
     hr = LoadData(AudioState.bufferFrameCount, AudioState.data, AudioState.myFormat->nSamplesPerSec);
     assert(SUCCEEDED(hr));
 
