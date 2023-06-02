@@ -414,6 +414,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (windowHandle)
         {
             HDC windowDeviceContext = GetDC(windowHandle);
+
+            // Timing
+            LARGE_INTEGER startPerformanceCount;
+            QueryPerformanceCounter(&startPerformanceCount);
+            LARGE_INTEGER performanceFrequency;
+            QueryPerformanceFrequency(&performanceFrequency);
+
+            // Main loop
             while (gameRunning)
             {
                 // Input...
@@ -461,6 +469,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 playAudioStream();
                 xOffset++;
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
+                
+                // Timing
+                LARGE_INTEGER endPerformanceCount;
+                QueryPerformanceCounter(&endPerformanceCount);
+                float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart)*1000;
+                int fps = (float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart);
+                printf("Frame time: %0.01fms. FPS: %d\n ",elapsedMilliseconds, fps);
+
+
+                startPerformanceCount = endPerformanceCount;
             }
         }
         else
