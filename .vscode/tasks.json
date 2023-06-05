@@ -8,7 +8,7 @@
                 "-fdiagnostics-color=always",
                 //"--verbose",
                 "-g",
-                "${file}",
+                "win_main.cpp",
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe",
                 "-lgdi32",
