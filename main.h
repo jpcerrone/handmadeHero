@@ -1,2 +1,4 @@
 #pragma once
-void renderGraphics();
+
+float waveOffset = 0;
+float frequency = 440;

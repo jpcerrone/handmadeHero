@@ -104,39 +104,12 @@ struct AudioState_t
     IAudioRenderClient *renderClient;
     BYTE *data;
     UINT32 bufferFrameCount;
-    float waveOffset;
-    float frequency = 440;
 };
 static AudioState_t AudioState;
 
-HRESULT LoadSineWave(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
-{
-    int samplesPerWave = samplesPerSec / AudioState.frequency;
-
-    int16_t volume = 3000;
-    int16_t *sample = (int16_t *)bufferLocation;
-    for (int i =0; i < framesToWrite; i++)
-    { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
-        {
-            AudioState.waveOffset += ((float)1 / (float)samplesPerWave);
-            float sinValue = sinf(2.0f * (float)M_PI * AudioState.waveOffset);
-            *sample = sinValue * volume;
-            *(sample + 1) = sinValue * volume;
-        }
-        sample += 2;
-    }
-    AudioState.waveOffset -= (int)AudioState.waveOffset; // Keep it between 0 and 1 to avoid overflow.
-    return S_OK;
-}
-
-HRESULT LoadData(UINT32 framesToWrite, BYTE *bufferLocation, int samplesPerSec)
-{
-    return LoadSineWave(framesToWrite, bufferLocation, samplesPerSec);
-}
-
 void initAudioStream()
 {
-    int bufferSizeInSeconds = REFTIMES_PER_SEC/15;
+    int bufferSizeInSeconds = REFTIMES_PER_SEC/30;
 
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
@@ -160,7 +133,7 @@ void initAudioStream()
     waveFormatExtensible->Format.nAvgBytesPerSec = waveFormatExtensible->Format.nSamplesPerSec * waveFormatExtensible->Format.nBlockAlign;
     waveFormatExtensible->Samples.wValidBitsPerSample = 16;
 
-    hr = AudioState.audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, bufferSizeInSeconds /* 1 sec*/, 0, AudioState.myFormat, NULL);
+    hr = AudioState.audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, bufferSizeInSeconds, 0, AudioState.myFormat, NULL);
     assert(SUCCEEDED(hr));
 
     hr = AudioState.audioClient->GetBufferSize(&AudioState.bufferFrameCount);
@@ -172,10 +145,7 @@ void initAudioStream()
     hr = AudioState.renderClient->GetBuffer(AudioState.bufferFrameCount, &AudioState.data);
     assert(SUCCEEDED(hr));
 
-    // Load Data
-    AudioState.waveOffset = 0;
-    hr = LoadData(AudioState.bufferFrameCount, AudioState.data, AudioState.myFormat->nSamplesPerSec);
-    assert(SUCCEEDED(hr));
+    renderSound(AudioState.bufferFrameCount, AudioState.data, AudioState.myFormat->nSamplesPerSec);
 
     hr = AudioState.renderClient->ReleaseBuffer(AudioState.bufferFrameCount, AUDCLNT_BUFFERFLAGS_SILENT); // This flag eliminates the need for the client to explicitly write silence AudioState.data to the rendering buffer.
     assert(SUCCEEDED(hr));
@@ -209,9 +179,7 @@ void playAudioStream()
     hr = AudioState.renderClient->GetBuffer(numFramesAvailable, &AudioState.data);
     assert(SUCCEEDED(hr));
 
-    // Load the buffer with AudioState.data from the audio source.
-    hr = LoadData(numFramesAvailable, AudioState.data, AudioState.myFormat->nSamplesPerSec);
-    assert(SUCCEEDED(hr));
+    renderSound(numFramesAvailable, AudioState.data, AudioState.myFormat->nSamplesPerSec);
 
     hr = AudioState.renderClient->ReleaseBuffer(numFramesAvailable, 0);
     assert(SUCCEEDED(hr));
@@ -251,10 +219,10 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
             std::cout << "SPACE" << wasDown << std::endl;
         }
         if (wParam == VK_UP){
-            AudioState.frequency *= 2;
+            increaseSoundFrequency(10);
         }
         if (wParam == VK_DOWN){
-            AudioState.frequency /= 2;
+            decreaseSoundFrequency(10);
         }
     }
     break;
@@ -265,12 +233,11 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     break;
     case WM_CLOSE:
     {
-#ifdef _DEBUG
-        std::cout << "DEBUG: exit popup" << std::endl;
-#endif
-        if (MessageBox(windowHandle, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO) == IDYES)
-        {
+        // TODO: Stop audio smoothly
+        HRESULT messageBoxSucceded = MessageBox(windowHandle, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO);
+        if (messageBoxSucceded == IDYES){
             gameRunning = false;
+            
             DestroyWindow(windowHandle);
         };
     }
@@ -391,7 +358,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     gameRunning = false;
                     break;
                 }
-                // renderGradient(xOffset);
                 renderGraphics(globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, xOffset);
                 playAudioStream();
                 xOffset++;

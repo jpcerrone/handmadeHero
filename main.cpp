@@ -69,3 +69,33 @@ void renderGraphics(void* memory, int width, int height, int xOffset){
     return renderArgFlag(memory, width, height);
     # endif
 }
+
+void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec){
+    int samplesPerWave = samplesPerSec / frequency;
+
+    int16_t volume = 1200;
+    int16_t *sample = (int16_t *)bufferLocation;
+    for (int i =0; i < framesToWrite; i++)
+    { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
+        {
+            waveOffset += ((float)1 / (float)samplesPerWave);
+            float sinValue = sinf(2.0f * (float)M_PI * waveOffset);
+            *sample = sinValue * volume;
+            *(sample + 1) = sinValue * volume;
+        }
+        sample += 2;
+    }
+    waveOffset -= (int)waveOffset; // Keep it between 0 and 1 to avoid overflow.
+}
+
+void renderSound(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec){
+    loadSineWave(framesToWrite, bufferLocation, samplesPerSec);
+}
+
+void increaseSoundFrequency(int ammount){
+    frequency += ammount;
+}
+
+void decreaseSoundFrequency(int ammount){
+    frequency -= ammount;
+}
