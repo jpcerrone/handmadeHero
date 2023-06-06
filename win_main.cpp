@@ -20,7 +20,6 @@
 
 #define LOG(p_string) std::cout << p_string << std::endl
 
-int xOffset = 0;
 static bool gameRunning;
 
 struct Bitmap
@@ -102,12 +101,12 @@ struct AudioState_t
     WAVEFORMATEX *myFormat;
     IAudioClient *audioClient;
     IAudioRenderClient *renderClient;
-    BYTE *data;
+    BYTE *buffer;
     UINT32 bufferFrameCount;
 };
 static AudioState_t AudioState;
 
-void initAudioStream()
+void initWASAPI()
 {
     int bufferSizeInSeconds = REFTIMES_PER_SEC/30;
 
@@ -142,14 +141,8 @@ void initAudioStream()
     hr = AudioState.audioClient->GetService(IID_PPV_ARGS(&AudioState.renderClient));
     assert(SUCCEEDED(hr));
 
-    hr = AudioState.renderClient->GetBuffer(AudioState.bufferFrameCount, &AudioState.data);
-    assert(SUCCEEDED(hr));
-
-    renderSound(AudioState.bufferFrameCount, AudioState.data, AudioState.myFormat->nSamplesPerSec);
-
-    hr = AudioState.renderClient->ReleaseBuffer(AudioState.bufferFrameCount, AUDCLNT_BUFFERFLAGS_SILENT); // This flag eliminates the need for the client to explicitly write silence AudioState.data to the rendering buffer.
-    assert(SUCCEEDED(hr));
-
+    AudioState.buffer = (BYTE*)VirtualAlloc(0, waveFormatExtensible->Format.nAvgBytesPerSec, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    
     hr = AudioState.audioClient->Start();
     assert(SUCCEEDED(hr));
 
@@ -162,26 +155,23 @@ void initAudioStream()
         enumerator->Release(); */
 }
 
-void playAudioStream()
+void fillWASAPIBuffer(int framesToWrite)
 {
-    // Calculate the actual duration of the allocated buffer.
-    REFERENCE_TIME hnsActualDuration = (double)REFTIMES_PER_SEC *
-                                       AudioState.bufferFrameCount / AudioState.myFormat->nSamplesPerSec;
-    // See how much buffer space is available.
-    UINT32 numFramesPadding;
-    HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
-    assert(SUCCEEDED(hr));
-
-    // NOTE(nick): output sound
-    UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
-
     // Grab the next empty buffer from the audio device.
-    hr = AudioState.renderClient->GetBuffer(numFramesAvailable, &AudioState.data);
+    BYTE* renderBuffer;
+    HRESULT hr = AudioState.renderClient->GetBuffer(framesToWrite, &renderBuffer);
     assert(SUCCEEDED(hr));
 
-    renderSound(numFramesAvailable, AudioState.data, AudioState.myFormat->nSamplesPerSec);
+    int16_t *renderSample = (int16_t *)renderBuffer;
+    int16_t *inputSample = (int16_t *)AudioState.buffer;
+    for(int i = 0; i < framesToWrite; i++){
+        *renderSample = *inputSample;
+        *(renderSample+1) = *(inputSample+1);
+        renderSample+=2;
+        inputSample+=2;
+    }
 
-    hr = AudioState.renderClient->ReleaseBuffer(numFramesAvailable, 0);
+    hr = AudioState.renderClient->ReleaseBuffer(framesToWrite, 0);
     assert(SUCCEEDED(hr));
 }
 
@@ -248,15 +238,15 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
         DestroyWindow(windowHandle);
     }
     break;
-    case WM_PAINT:
+/*     case WM_PAINT:
     {
         PAINTSTRUCT paintStruct;
         HDC hdc = BeginPaint(windowHandle, &paintStruct);
-        renderGraphics(globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, xOffset);
+        //renderGraphics(globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, xOffset);
         updateWindow(hdc, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
         EndPaint(windowHandle, &paintStruct);
-    }
-    break;
+    } 
+    break; */
     default:
     {
         returnVal = DefWindowProc(windowHandle, uMsg, wParam, lParam);
@@ -298,9 +288,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
     CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-    //  __FILE__, __LINE__,  try these out !
+    //  TODO: __FILE__, __LINE__,  try these out !
     loadXInput();
-    initAudioStream();
+    initWASAPI();
 
     if (RegisterClass(&wc))
     {
@@ -318,7 +308,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             // Main loop
             while (gameRunning)
             {
-                // Input...
+                // Joypad Input
+                GameInputState newState = {};
                 DWORD dwResult;
                 for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
                 {
@@ -334,11 +325,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         WORD buttons = state.Gamepad.wButtons;
                         if (buttons & XINPUT_GAMEPAD_A)
                         { // ex: buttons:0101, A:0001, buttons & A:0001, casting anything other than 0 to bool returns true.
-                            std::cout << "A" << std::endl;
+                            newState.A_Button = {0, true};
                         }
                         if (buttons & XINPUT_GAMEPAD_B)
                         {
-                            std::cout << "B" << std::endl;
+                            newState.B_Button = {0, true};
                         }
                     }
                     else
@@ -358,9 +349,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     gameRunning = false;
                     break;
                 }
-                renderGraphics(globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, xOffset);
-                playAudioStream();
-                xOffset++;
+                UINT32 numFramesPadding;
+                HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
+                assert(SUCCEEDED(hr));
+
+                UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
+
+                updateAndRender(numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+                fillWASAPIBuffer(numFramesAvailable);
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
                 
                 // Timing
@@ -369,7 +365,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart)*1000;
                 int fps = (float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart);
                 printf("Frame time: %0.01fms. FPS: %d\n ",elapsedMilliseconds, fps);
-
 
                 startPerformanceCount = endPerformanceCount;
             }
