@@ -1,5 +1,6 @@
 #include "main.h"
-void renderArgFlag(void* memory, int width, int height)
+
+void renderArgFlag(void *memory, int width, int height)
 {
     const uint32_t lightBlueColor = 0xadd8e6; // RGB
     const uint32_t whiteColor = 0xFFFFFF;     // RGB
@@ -44,7 +45,7 @@ void renderArgFlag(void* memory, int width, int height)
     }
 }
 
-void renderGradient(void* memory, int width, int height, int xOffset)
+void renderGradient(void *memory, int width, int height, int xOffset)
 {
     // pixel = 4B = 32b
     uint32_t *pixel = (uint32_t *)memory;
@@ -62,20 +63,13 @@ void renderGradient(void* memory, int width, int height, int xOffset)
     }
 }
 
-void renderGraphics(void* memory, int width, int height, int xOffset){
-    # if 0
-    return renderGradient(memory, width, height, xOffset);
-    # else
-    return renderArgFlag(memory, width, height);
-    # endif
-}
-
-void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec){
+void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec)
+{
     int samplesPerWave = samplesPerSec / frequency;
 
     int16_t volume = 1200;
     int16_t *sample = (int16_t *)bufferLocation;
-    for (int i =0; i < framesToWrite; i++)
+    for (int i = 0; i < framesToWrite; i++)
     { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
         {
             waveOffset += ((float)1 / (float)samplesPerWave);
@@ -88,14 +82,27 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     waveOffset -= (int)waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-void renderSound(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec){
-    loadSineWave(framesToWrite, bufferLocation, samplesPerSec);
-}
-
-void increaseSoundFrequency(int ammount){
+void increaseSoundFrequency(int ammount)
+{
     frequency += ammount;
 }
 
-void decreaseSoundFrequency(int ammount){
+void decreaseSoundFrequency(int ammount)
+{
     frequency -= ammount;
+}
+
+void updateAndRender(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec,
+                     void *memory, int width, int height, GameInputState newState)
+{
+    static int xOffset = 0;
+    if (newState.A_Button.isDown){
+        xOffset++;
+    }
+    loadSineWave(framesToWrite, bufferLocation, samplesPerSec);
+    #if 1
+        return renderGradient(memory, width, height, xOffset);
+    #else
+        return renderArgFlag(memory, width, height);
+    #endif
 }
