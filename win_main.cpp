@@ -208,12 +208,6 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
             }
             std::cout << "SPACE" << wasDown << std::endl;
         }
-        if (wParam == VK_UP){
-            increaseSoundFrequency(10);
-        }
-        if (wParam == VK_DOWN){
-            decreaseSoundFrequency(10);
-        }
     }
     break;
     case WM_SIZE:
@@ -306,12 +300,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             QueryPerformanceFrequency(&performanceFrequency);
 
             // Main loop
+            GameInputState oldState = {};
+            GameInputState newState = {};
             while (gameRunning)
             {
-                // Joypad Input
-                GameInputState newState = {};
+                oldState = newState;
+                newState = {};
+                // Joypad Input  
                 DWORD dwResult;
-                for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
+                for (DWORD i = 0; i < 1 /*XUSER_MAX_COUNT - 1 player only for now*/; i++)
                 {
                     XINPUT_STATE state;
                     ZeroMemory(&state, sizeof(XINPUT_STATE));
@@ -325,17 +322,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         WORD buttons = state.Gamepad.wButtons;
                         if (buttons & XINPUT_GAMEPAD_A)
                         { // ex: buttons:0101, A:0001, buttons & A:0001, casting anything other than 0 to bool returns true.
-                            newState.A_Button = {0, true};
+                            if (oldState.A_Button.isDown){
+                                newState.A_Button = {1, true};
+                            } else{
+                                newState.A_Button = {0, true};
+                            }
                         }
                         if (buttons & XINPUT_GAMEPAD_B)
                         {
-                            newState.B_Button = {0, true};
+                            if (oldState.B_Button.isDown){
+                                newState.B_Button = {1, true};
+                            } else{
+                                newState.B_Button = {0, true};
+                            }
+                        }
+                        if (state.Gamepad.sThumbLX || state.Gamepad.sThumbLY){ // TODO: implement deadzone
+                            newState.Left_Stick.xPosition = state.Gamepad.sThumbLX / 32767.0f;
+                            newState.Left_Stick.yPosition = state.Gamepad.sThumbLY / 32767.0f;
                         }
                     }
                     else
                     {
                         // Controller is not connected
                     }
+
                 }
 
                 MSG message;

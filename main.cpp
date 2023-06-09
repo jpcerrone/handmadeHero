@@ -82,27 +82,18 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     waveOffset -= (int)waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-void increaseSoundFrequency(int ammount)
-{
-    frequency += ammount;
-}
-
-void decreaseSoundFrequency(int ammount)
-{
-    frequency -= ammount;
-}
-
 void updateAndRender(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec,
-                     void *memory, int width, int height, GameInputState newState)
+                     void *memory, int width, int height, GameInputState inputState)
 {
     static int xOffset = 0;
-    if (newState.A_Button.isDown){
+    if (inputState.A_Button.isDown){
         xOffset++;
     }
+    frequency += inputState.Left_Stick.xPosition;
     loadSineWave(framesToWrite, bufferLocation, samplesPerSec);
     #if 1
-        return renderGradient(memory, width, height, xOffset);
+        renderGradient(memory, width, height, xOffset);
     #else
-        return renderArgFlag(memory, width, height);
+        renderArgFlag(memory, width, height);
     #endif
 }

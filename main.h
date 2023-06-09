@@ -8,17 +8,24 @@ struct ButtonState{
     bool isDown;
 };
 
+struct AxisState{
+    float xPosition;
+    float yPosition;
+};
+
 struct GameInputState{
     union{
         ButtonState buttons[4];
+        AxisState axis[2];
         struct {
             ButtonState A_Button;
             ButtonState B_Button;
             ButtonState X_Button;
             ButtonState Y_Button;
+            AxisState Left_Stick;
+            AxisState Right_Stick;
         } ;
     };
-    // TODO: handle analog sticks
 };
 
 // TODO: handle multiple controllers:
