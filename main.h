@@ -1,7 +1,18 @@
 #pragma once
 
-float waveOffset = 0;
-float frequency = 440;
+struct GameMemory{
+    bool isinitialized;
+    uint64_t transientStorageSize;
+    void* transientStorage;
+    uint64_t permanentStorageSize;
+    void* permanentStorage;
+};
+
+struct GameState{
+    int xOffset;
+    float waveOffset;
+    float frequency;
+};
 
 struct ButtonState{
     int halfTransitionCount;

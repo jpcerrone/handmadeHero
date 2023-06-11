@@ -15,8 +15,8 @@
                 "-lgdi32",
                 "-lole32",
                 "-lavrt",
-                "-l:libksguid.a"
-                //"-D_DEBUG"
+                "-l:libksguid.a",
+                "-DDEV_BUILD"
             ],
             "options": {
                 "cwd": "${fileDirname}"

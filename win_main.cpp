@@ -282,7 +282,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
     CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-    //  TODO: __FILE__, __LINE__,  try these out !
     loadXInput();
     initWASAPI();
 
@@ -300,8 +299,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             QueryPerformanceFrequency(&performanceFrequency);
 
             // Main loop
+            GameMemory memory;
+            memory.permanentStorageSize = 64*1024*1024; //MB;
+            memory.permanentStorage = VirtualAlloc(0, memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            memory.transientStorageSize = 64*1024*1024; //MB;
+            memory.transientStorage = VirtualAlloc(0, memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            //Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState oldState = {};
             GameInputState newState = {};
+
             while (gameRunning)
             {
                 oldState = newState;
@@ -364,8 +370,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 assert(SUCCEEDED(hr));
 
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
-
-                updateAndRender(numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+                updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
                 fillWASAPIBuffer(numFramesAvailable);
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
                 

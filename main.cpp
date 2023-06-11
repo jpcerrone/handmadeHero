@@ -1,4 +1,10 @@
 #include "main.h"
+#include <iostream>
+#ifdef DEV_BUILD
+#define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
+#else
+#define Assert(expression)
+#endif
 
 void renderArgFlag(void *memory, int width, int height)
 {
@@ -63,7 +69,7 @@ void renderGradient(void *memory, int width, int height, int xOffset)
     }
 }
 
-void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec)
+void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec, float frequency, float *waveOffset)
 {
     int samplesPerWave = samplesPerSec / frequency;
 
@@ -72,27 +78,33 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     for (int i = 0; i < framesToWrite; i++)
     { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
         {
-            waveOffset += ((float)1 / (float)samplesPerWave);
-            float sinValue = sinf(2.0f * (float)M_PI * waveOffset);
+            *waveOffset += ((float)1 / (float)samplesPerWave);
+            float sinValue = sinf(2.0f * (float)M_PI * *waveOffset);
             *sample = sinValue * volume;
             *(sample + 1) = sinValue * volume;
         }
         sample += 2;
     }
-    waveOffset -= (int)waveOffset; // Keep it between 0 and 1 to avoid overflow.
+    *waveOffset -= (int)*waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-void updateAndRender(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec,
+void updateAndRender(GameMemory *gameMemory, uint32_t framesToWrite, void *bufferLocation, int samplesPerSec,
                      void *memory, int width, int height, GameInputState inputState)
 {
-    static int xOffset = 0;
-    if (inputState.A_Button.isDown){
-        xOffset++;
+    GameState *gameState = (GameState*)gameMemory->permanentStorage;
+    Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
+    if (!gameMemory->isinitialized){
+        gameState->frequency = 440;
+        gameMemory->isinitialized = true;
     }
-    frequency += inputState.Left_Stick.xPosition;
-    loadSineWave(framesToWrite, bufferLocation, samplesPerSec);
+
+    if (inputState.A_Button.isDown){
+        gameState->xOffset++;
+    }
+    gameState->frequency += inputState.Left_Stick.xPosition;
+    loadSineWave(framesToWrite, bufferLocation, samplesPerSec, gameState->frequency, &gameState->waveOffset);
     #if 1
-        renderGradient(memory, width, height, xOffset);
+        renderGradient(memory, width, height, gameState->xOffset);
     #else
         renderArgFlag(memory, width, height);
     #endif
