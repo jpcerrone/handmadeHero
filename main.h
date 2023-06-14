@@ -39,6 +39,13 @@ struct GameInputState{
     };
 };
 
+struct FileReadResult{
+    uint64_t size;
+    void* memory;
+};
+FileReadResult readFile(char* path);
+bool writeFile(char* path, void* content, uint64_t bytesToWrite);
+void freeFileMemory(void* memory);
 // TODO: handle multiple controllers:
 /*
 struct game_input {

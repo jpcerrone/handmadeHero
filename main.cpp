@@ -1,4 +1,6 @@
 #include "main.h"
+#define _USE_MATH_DEFINES
+#include <math.h>
 #include <iostream>
 #ifdef DEV_BUILD
 #define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
@@ -98,6 +100,10 @@ void updateAndRender(GameMemory *gameMemory, uint32_t framesToWrite, void *buffe
         gameMemory->isinitialized = true;
     }
 
+    FileReadResult result;
+    result = readFile("main.h");
+    writeFile("out.txt", result.memory, result.size);
+    freeFileMemory(result.memory);
     if (inputState.A_Button.isDown){
         gameState->xOffset++;
     }

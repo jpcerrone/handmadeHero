@@ -12,7 +12,7 @@
 #include <assert.h>
 #include <mmsystem.h>
 #include <math.h>
-
+#include <cinttypes>
 #include "main.cpp"
 
 #define REFTIMES_PER_SEC 10'000'000 // 100 nanoscend units, 1 seconds
@@ -112,7 +112,7 @@ void initWASAPI()
 
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
-    hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
     assert(SUCCEEDED(hr));
 
     IMMDevice *device;
@@ -124,7 +124,7 @@ void initWASAPI()
 
     hr = AudioState.audioClient->GetMixFormat(&AudioState.myFormat);
     assert(SUCCEEDED(hr));
-
+    
     WAVEFORMATEXTENSIBLE *waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(AudioState.myFormat);
     waveFormatExtensible->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
     waveFormatExtensible->Format.wBitsPerSample = 16;
@@ -142,6 +142,7 @@ void initWASAPI()
     assert(SUCCEEDED(hr));
 
     AudioState.buffer = (BYTE*)VirtualAlloc(0, waveFormatExtensible->Format.nAvgBytesPerSec, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    assert(AudioState.buffer);
     
     hr = AudioState.audioClient->Start();
     assert(SUCCEEDED(hr));
@@ -206,7 +207,7 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
             {
                 openFileAndDisplayName();
             }
-            std::cout << "SPACE" << wasDown << std::endl;
+            LOG("SPACE" + wasDown);
         }
     }
     break;
@@ -255,14 +256,56 @@ void loadXInput()
     HMODULE handle = LoadLibrary("Xinput1_4.dll");
     if (handle)
     {
-        std::cout << "Loaded Xinput1_4.dll" << std::endl;
+        LOG("Loaded Xinput1_4.dll");
     }
     else
     {
-        std::cout << "Couldnt find Xinput dll" << std::endl;
+        LOG("Couldnt find Xinput dll");
         return;
     }
     xInputGetState = (XInputGetState_t)GetProcAddress(handle, "XInputGetState");
+}
+
+bool writeFile(char* path, void* content, uint64_t bytesToWrite){
+    HANDLE fileHandle = CreateFile(path, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL , NULL);
+    if (fileHandle){
+        DWORD bytesWriten = 0;
+        if (WriteFile(fileHandle, content, bytesToWrite, &bytesWriten, NULL) && (bytesToWrite == bytesWriten)){
+            LOG("salio");
+        } else{
+            // LOG ERROR
+        }
+        CloseHandle(fileHandle);
+        return true;
+    }
+    return false;
+};
+
+FileReadResult readFile(char* path){
+    HANDLE fileHandle = CreateFile(path, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    FileReadResult result = {};
+    if (fileHandle){
+        LARGE_INTEGER size;
+        if (GetFileSizeEx(fileHandle, &size)){
+            result.size = size.QuadPart;
+            result.memory = VirtualAlloc(0, result.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (result.memory){
+                DWORD bytesRead = 0;
+                if (ReadFile(fileHandle, result.memory, (DWORD)result.size, &bytesRead, NULL) && (bytesRead == result.size)){
+                }else{
+                    // Log failure
+                }
+            }
+        }else{
+            // Log failure
+        }
+        CloseHandle(fileHandle);
+    }
+    return result;
+}
+
+void freeFileMemory(void* memory){
+    VirtualFree(memory, 0 , MEM_RELEASE);
 }
 
 // hInstance: handle to the .exe
@@ -281,9 +324,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     globalBitmap.dimensions = {1920, 1080};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
-    CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-    loadXInput();
+    HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    assert(SUCCEEDED(init));
+
     initWASAPI();
+    loadXInput();
 
     if (RegisterClass(&wc))
     {
@@ -302,8 +347,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             GameMemory memory;
             memory.permanentStorageSize = 64*1024*1024; //MB;
             memory.permanentStorage = VirtualAlloc(0, memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            memory.transientStorageSize = 64*1024*1024; //MB;
+            memory.transientStorageSize = 1*1024*1024*1024; //GB;
             memory.transientStorage = VirtualAlloc(0, memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            memory.isinitialized = false;
             //Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState oldState = {};
             GameInputState newState = {};
