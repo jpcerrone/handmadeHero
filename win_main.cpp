@@ -269,9 +269,8 @@ void loadXInput()
 bool writeFile(char* path, void* content, uint64_t bytesToWrite){
     HANDLE fileHandle = CreateFile(path, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL , NULL);
     if (fileHandle){
-        DWORD bytesWriten = 0;
-        if (WriteFile(fileHandle, content, bytesToWrite, &bytesWriten, NULL) && (bytesToWrite == bytesWriten)){
-            LOG("salio");
+        DWORD bytesWritten = 0;
+        if (WriteFile(fileHandle, content, (DWORD)bytesToWrite, &bytesWritten, NULL) && (bytesToWrite == bytesWritten)){
         } else{
             // LOG ERROR
         }
@@ -288,7 +287,7 @@ FileReadResult readFile(char* path){
         LARGE_INTEGER size;
         if (GetFileSizeEx(fileHandle, &size)){
             result.size = size.QuadPart;
-            result.memory = VirtualAlloc(0, result.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            result.memory = VirtualAlloc(0, (SIZE_T)result.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (result.memory){
                 DWORD bytesRead = 0;
                 if (ReadFile(fileHandle, result.memory, (DWORD)result.size, &bytesRead, NULL) && (bytesRead == result.size)){
@@ -346,9 +345,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             // Main loop
             GameMemory memory;
             memory.permanentStorageSize = 64*1024*1024; //MB;
-            memory.permanentStorage = VirtualAlloc(0, memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            memory.permanentStorage = VirtualAlloc(0, (SIZE_T)memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             memory.transientStorageSize = 1*1024*1024*1024; //GB;
-            memory.transientStorage = VirtualAlloc(0, memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            memory.transientStorage = VirtualAlloc(0, (SIZE_T)memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             memory.isinitialized = false;
             //Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState oldState = {};
@@ -424,7 +423,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 LARGE_INTEGER endPerformanceCount;
                 QueryPerformanceCounter(&endPerformanceCount);
                 float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart)*1000;
-                int fps = (float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart);
+                int fps = (int)((float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart));
                 printf("Frame time: %0.01fms. FPS: %d\n ",elapsedMilliseconds, fps);
 
                 startPerformanceCount = endPerformanceCount;

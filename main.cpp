@@ -61,9 +61,8 @@ void renderGradient(void *memory, int width, int height, int xOffset)
     {
         for (int x = 0; x < width; x++)
         {
-            uint8_t red = 0x00;
             uint8_t green = 0;
-            uint8_t blue = x + xOffset;
+            uint8_t blue = (uint8_t)(x + xOffset);
             //*pixel = 0x000000FF; //xx RR GG BB -> little endian, most significant bits get loaded last (xx)
             *pixel = (green << 8) | blue;
             pixel++;
@@ -73,17 +72,17 @@ void renderGradient(void *memory, int width, int height, int xOffset)
 
 void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSec, float frequency, float *waveOffset)
 {
-    int samplesPerWave = samplesPerSec / frequency;
+    int samplesPerWave = (int)(samplesPerSec / frequency);
 
-    int16_t volume = 1200;
+    int volume = 1200;
     int16_t *sample = (int16_t *)bufferLocation;
-    for (int i = 0; i < framesToWrite; i++)
+    for (uint32_t i = 0; i < framesToWrite; i++)
     { // The size of an audio frame is the number of channels in the stream multiplied by the sample size
         {
             *waveOffset += ((float)1 / (float)samplesPerWave);
             float sinValue = sinf(2.0f * (float)M_PI * *waveOffset);
-            *sample = sinValue * volume;
-            *(sample + 1) = sinValue * volume;
+            *sample = (int16_t)(sinValue * volume);
+            *(sample + 1) = (int16_t)(sinValue * volume);
         }
         sample += 2;
     }
