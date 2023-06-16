@@ -99,10 +99,11 @@ void updateAndRender(GameMemory *gameMemory, uint32_t framesToWrite, void *buffe
         gameMemory->isinitialized = true;
     }
 
-    FileReadResult result;
+    // Disabling for now as it's only for debugging.
+/*     FileReadResult result;
     result = readFile("main.h");
     writeFile("out.txt", result.memory, result.size);
-    freeFileMemory(result.memory);
+    freeFileMemory(result.memory); */
     if (inputState.A_Button.isDown){
         gameState->xOffset++;
     }

@@ -108,7 +108,7 @@ static AudioState_t AudioState;
 
 void initWASAPI()
 {
-    int bufferSizeInSeconds = REFTIMES_PER_SEC/30;
+    int bufferSizeInSeconds = REFTIMES_PER_SEC / 30;
 
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
@@ -124,7 +124,7 @@ void initWASAPI()
 
     hr = AudioState.audioClient->GetMixFormat(&AudioState.myFormat);
     assert(SUCCEEDED(hr));
-    
+
     WAVEFORMATEXTENSIBLE *waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(AudioState.myFormat);
     waveFormatExtensible->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
     waveFormatExtensible->Format.wBitsPerSample = 16;
@@ -141,9 +141,9 @@ void initWASAPI()
     hr = AudioState.audioClient->GetService(IID_PPV_ARGS(&AudioState.renderClient));
     assert(SUCCEEDED(hr));
 
-    AudioState.buffer = (BYTE*)VirtualAlloc(0, waveFormatExtensible->Format.nAvgBytesPerSec, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    AudioState.buffer = (BYTE *)VirtualAlloc(0, waveFormatExtensible->Format.nAvgBytesPerSec, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     assert(AudioState.buffer);
-    
+
     hr = AudioState.audioClient->Start();
     assert(SUCCEEDED(hr));
 
@@ -159,17 +159,18 @@ void initWASAPI()
 void fillWASAPIBuffer(int framesToWrite)
 {
     // Grab the next empty buffer from the audio device.
-    BYTE* renderBuffer;
+    BYTE *renderBuffer;
     HRESULT hr = AudioState.renderClient->GetBuffer(framesToWrite, &renderBuffer);
     assert(SUCCEEDED(hr));
 
     int16_t *renderSample = (int16_t *)renderBuffer;
     int16_t *inputSample = (int16_t *)AudioState.buffer;
-    for(int i = 0; i < framesToWrite; i++){
+    for (int i = 0; i < framesToWrite; i++)
+    {
         *renderSample = *inputSample;
-        *(renderSample+1) = *(inputSample+1);
-        renderSample+=2;
-        inputSample+=2;
+        *(renderSample + 1) = *(inputSample + 1);
+        renderSample += 2;
+        inputSample += 2;
     }
 
     hr = AudioState.renderClient->ReleaseBuffer(framesToWrite, 0);
@@ -182,33 +183,11 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     switch (uMsg)
     {
     case WM_SYSKEYDOWN:
-    {
-        bool isAltDown = lParam & (1 << 29);
-        if (wParam == VK_F4 && isAltDown)
-        {
-            gameRunning = false;
-        }
-    }
-    break;
     case WM_SYSKEYUP:
-    {
-    }
-    break;
     case WM_KEYUP:
-    {
-    }
-    break;
     case WM_KEYDOWN:
     {
-        bool wasDown = lParam & (1 << 30);
-        if (wParam == VK_SPACE)
-        {
-            if (!wasDown)
-            {
-                openFileAndDisplayName();
-            }
-            LOG("SPACE" + wasDown);
-        }
+        Assert(!"no keyboard message here");
     }
     break;
     case WM_SIZE:
@@ -220,9 +199,10 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     {
         // TODO: Stop audio smoothly
         HRESULT messageBoxSucceded = MessageBox(windowHandle, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO);
-        if (messageBoxSucceded == IDYES){
+        if (messageBoxSucceded == IDYES)
+        {
             gameRunning = false;
-            
+
             DestroyWindow(windowHandle);
         };
     }
@@ -233,15 +213,14 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
         DestroyWindow(windowHandle);
     }
     break;
-/*     case WM_PAINT:
-    {
-        PAINTSTRUCT paintStruct;
-        HDC hdc = BeginPaint(windowHandle, &paintStruct);
-        //renderGraphics(globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, xOffset);
-        updateWindow(hdc, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
-        EndPaint(windowHandle, &paintStruct);
-    } 
-    break; */
+    case WM_PAINT:
+            {
+                PAINTSTRUCT paintStruct;
+                HDC hdc = BeginPaint(windowHandle, &paintStruct);
+                updateWindow(hdc, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
+                EndPaint(windowHandle, &paintStruct);
+            }
+            break;
     default:
     {
         returnVal = DefWindowProc(windowHandle, uMsg, wParam, lParam);
@@ -266,12 +245,17 @@ void loadXInput()
     xInputGetState = (XInputGetState_t)GetProcAddress(handle, "XInputGetState");
 }
 
-bool writeFile(char* path, void* content, uint64_t bytesToWrite){
-    HANDLE fileHandle = CreateFile(path, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL , NULL);
-    if (fileHandle){
+bool writeFile(char *path, void *content, uint64_t bytesToWrite)
+{
+    HANDLE fileHandle = CreateFile(path, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (fileHandle)
+    {
         DWORD bytesWritten = 0;
-        if (WriteFile(fileHandle, content, (DWORD)bytesToWrite, &bytesWritten, NULL) && (bytesToWrite == bytesWritten)){
-        } else{
+        if (WriteFile(fileHandle, content, (DWORD)bytesToWrite, &bytesWritten, NULL) && (bytesToWrite == bytesWritten))
+        {
+        }
+        else
+        {
             // LOG ERROR
         }
         CloseHandle(fileHandle);
@@ -280,22 +264,31 @@ bool writeFile(char* path, void* content, uint64_t bytesToWrite){
     return false;
 };
 
-FileReadResult readFile(char* path){
+FileReadResult readFile(char *path)
+{
     HANDLE fileHandle = CreateFile(path, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     FileReadResult result = {};
-    if (fileHandle){
+    if (fileHandle)
+    {
         LARGE_INTEGER size;
-        if (GetFileSizeEx(fileHandle, &size)){
+        if (GetFileSizeEx(fileHandle, &size))
+        {
             result.size = size.QuadPart;
             result.memory = VirtualAlloc(0, (SIZE_T)result.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (result.memory){
+            if (result.memory)
+            {
                 DWORD bytesRead = 0;
-                if (ReadFile(fileHandle, result.memory, (DWORD)result.size, &bytesRead, NULL) && (bytesRead == result.size)){
-                }else{
+                if (ReadFile(fileHandle, result.memory, (DWORD)result.size, &bytesRead, NULL) && (bytesRead == result.size))
+                {
+                }
+                else
+                {
                     // Log failure
                 }
             }
-        }else{
+        }
+        else
+        {
             // Log failure
         }
         CloseHandle(fileHandle);
@@ -303,8 +296,9 @@ FileReadResult readFile(char* path){
     return result;
 }
 
-void freeFileMemory(void* memory){
-    VirtualFree(memory, 0 , MEM_RELEASE);
+void freeFileMemory(void *memory)
+{
+    VirtualFree(memory, 0, MEM_RELEASE);
 }
 
 // hInstance: handle to the .exe
@@ -344,20 +338,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             // Main loop
             GameMemory memory;
-            memory.permanentStorageSize = 64*1024*1024; //MB;
+            memory.permanentStorageSize = 64 * 1024 * 1024; // MB;
             memory.permanentStorage = VirtualAlloc(0, (SIZE_T)memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            memory.transientStorageSize = 1*1024*1024*1024; //GB;
+            memory.transientStorageSize = 1 * 1024 * 1024 * 1024; // GB;
             memory.transientStorage = VirtualAlloc(0, (SIZE_T)memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             memory.isinitialized = false;
-            //Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
-            GameInputState oldState = {};
+            // Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState newState = {};
 
             while (gameRunning)
             {
-                oldState = newState;
-                newState = {};
-                // Joypad Input  
+
+                // Joypad Input
                 DWORD dwResult;
                 for (DWORD i = 0; i < 1 /*XUSER_MAX_COUNT - 1 player only for now*/; i++)
                 {
@@ -373,43 +365,134 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         WORD buttons = state.Gamepad.wButtons;
                         if (buttons & XINPUT_GAMEPAD_A)
                         { // ex: buttons:0101, A:0001, buttons & A:0001, casting anything other than 0 to bool returns true.
-                            if (oldState.A_Button.isDown){
+                            if (newState.A_Button.isDown)
+                            {
                                 newState.A_Button = {1, true};
-                            } else{
+                            }
+                            else
+                            {
                                 newState.A_Button = {0, true};
                             }
+                        } else{
+                            newState.A_Button = {0, false};
                         }
                         if (buttons & XINPUT_GAMEPAD_B)
                         {
-                            if (oldState.B_Button.isDown){
+                            if (newState.B_Button.isDown)
+                            {
                                 newState.B_Button = {1, true};
-                            } else{
+                            }
+                            else
+                            {
                                 newState.B_Button = {0, true};
                             }
+                        } else{
+                            newState.B_Button = {0, false};
                         }
-                        if (state.Gamepad.sThumbLX || state.Gamepad.sThumbLY){ // TODO: implement deadzone
-                            newState.Left_Stick.xPosition = state.Gamepad.sThumbLX / 32767.0f;
-                            newState.Left_Stick.yPosition = state.Gamepad.sThumbLY / 32767.0f;
+                        if (state.Gamepad.sThumbLX){
+                            if(state.Gamepad.sThumbLX >= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){
+                                newState.Left_Stick.xPosition = (state.Gamepad.sThumbLX - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                                LOG(newState.Left_Stick.xPosition);
+                            } else if (state.Gamepad.sThumbLX <= -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){
+                                newState.Left_Stick.xPosition = (state.Gamepad.sThumbLX + XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                                LOG(newState.Left_Stick.xPosition);
+                            } else{
+                                newState.Left_Stick.xPosition = 0;
+                            }
+                        }
+                        if (state.Gamepad.sThumbLY){
+                            if(state.Gamepad.sThumbLY <= -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || state.Gamepad.sThumbLY >= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){    
+                                newState.Left_Stick.yPosition = state.Gamepad.sThumbLY / 32767.0f;
+                            } else{
+                                    newState.Left_Stick.yPosition = 0;
+                            }
                         }
                     }
                     else
                     {
                         // Controller is not connected
                     }
-
                 }
 
                 MSG message;
-                if (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
+                while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
                 {
-                    TranslateMessage(&message);
-                    DispatchMessage(&message);
-                }
-                if (message.message == WM_QUIT)
-                {
-                    gameRunning = false;
+                    switch (message.message)
+                    {
+                    case WM_SYSKEYDOWN:
+                    {   // Alt F4
+                        bool isAltDown = message.lParam & (1 << 29);
+                        if (message.wParam == VK_F4 && isAltDown)
+                        {
+                            gameRunning = false;
+                        }
+                    }
                     break;
+                    case WM_SYSKEYUP:
+                    {
+                    }
+                    break;
+                    case WM_KEYUP:
+                    {
+                        switch(message.wParam){
+                            case 'Z':{
+                                newState.A_Button = {0, false};
+                            } break;
+                            case 'X':{
+                                newState.B_Button = {0, false};
+                            } break;
+                            case VK_RIGHT:{
+                                newState.Left_Stick.xPosition = 0.0;
+                            }break;
+                            case VK_LEFT:{
+                                newState.Left_Stick.xPosition = 0.0;
+                            }break;
+                            default: break;
+                        }
+                    }
+                    break;
+                    case WM_KEYDOWN:
+                    {
+                        bool wasDown = message.lParam & (1 << 30);
+                        switch(message.wParam){
+                            case 'Z':{
+                                newState.A_Button = {1, true};
+                            } break;
+                            case 'X':{
+                                newState.B_Button = {1, true};
+                            } break;
+                            case VK_RIGHT:{
+                                newState.Left_Stick.xPosition = 1.0;
+                            }break;
+                            case VK_LEFT:{
+                                newState.Left_Stick.xPosition = -1.0;
+                            }break;
+                            case VK_SPACE:
+                            {
+                                if (!wasDown)
+                                {
+                                    openFileAndDisplayName();
+                                }
+                                LOG("SPACE" + wasDown);
+                            } break;
+                            default: break;
+                        }
+                    }
+                    break;
+                    case WM_QUIT:
+                    {
+                        gameRunning = false;
+                    }
+                    break;
+                    default:
+                    {
+                        TranslateMessage(&message);
+                        DispatchMessage(&message);
+                    }
+                    break;
+                    }
                 }
+
                 UINT32 numFramesPadding;
                 HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
                 assert(SUCCEEDED(hr));
@@ -418,13 +501,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
                 fillWASAPIBuffer(numFramesAvailable);
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
-                
+
                 // Timing
                 LARGE_INTEGER endPerformanceCount;
                 QueryPerformanceCounter(&endPerformanceCount);
-                float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart)*1000;
+                float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart) * 1000;
                 int fps = (int)((float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart));
-                printf("Frame time: %0.01fms. FPS: %d\n ",elapsedMilliseconds, fps);
+                printf("Frame time: %0.01fms. FPS: %d\n ", elapsedMilliseconds, fps);
 
                 startPerformanceCount = endPerformanceCount;
             }

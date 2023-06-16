@@ -1,5 +1,10 @@
-# handmadeHero2 - My second attempt at following https://handmadehero.org/ . A series on implementing a complete game from scratch without using any libraries.
+# handmadeHero2
+
+My second attempt at following https://handmadehero.org/ . A series on implementing a complete game from scratch in C without using any libraries.
+
 The code is in a highly experimental state so expect it to be very ugly and unsctructured.
+
+Currently on day 17.
 
 ## Things implemented so far:
 * Windows message queue processing.
