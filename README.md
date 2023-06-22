@@ -4,7 +4,7 @@ My second attempt at following https://handmadehero.org/ . A series on implement
 
 The code is in a highly experimental state so expect it to be very ugly and unsctructured.
 
-Currently on day 17.
+Currently on day 19.
 
 ## Things implemented so far:
 * Windows message queue processing.

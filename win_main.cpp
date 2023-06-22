@@ -20,6 +20,7 @@
 
 #define LOG(p_string) std::cout << p_string << std::endl
 
+static int desiredFPS = 60;
 static bool gameRunning;
 
 struct Bitmap
@@ -108,7 +109,8 @@ static AudioState_t AudioState;
 
 void initWASAPI()
 {
-    int bufferSizeInSeconds = REFTIMES_PER_SEC / 30;
+    int framesOfLatency = 2; // 1 frame of latency seems to not be possible.
+    int bufferSizeInSeconds = REFTIMES_PER_SEC / (desiredFPS / framesOfLatency);
 
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
@@ -301,6 +303,16 @@ void freeFileMemory(void *memory)
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
+LARGE_INTEGER getEndPerformanceCount(){
+    LARGE_INTEGER endPerformanceCount;
+    QueryPerformanceCounter(&endPerformanceCount);
+    return endPerformanceCount;
+}
+
+float getEllapsedMS(LARGE_INTEGER endPerformanceCount, LARGE_INTEGER startPerformanceCount, LARGE_INTEGER performanceFrequency){
+    return ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart) * 1000;          
+}
+
 // hInstance: handle to the .exe
 // hPrevInstance: not used since 16bit windows
 // WINAPI: calling convention, tells compiler order of parameters
@@ -313,6 +325,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance ? hInstance : GetModuleHandle(nullptr);
     wc.lpszClassName = "Engine";
+
+    float desiredFrameTimeInMS = 1000.0f/desiredFPS;
+
+    MMRESULT canQueryEveryMs = timeBeginPeriod(1); // TODO: maybe call timeEndPeriod?
+    assert(canQueryEveryMs == TIMERR_NOERROR);
 
     globalBitmap.dimensions = {1920, 1080};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
@@ -503,12 +520,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
 
                 // Timing
-                LARGE_INTEGER endPerformanceCount;
-                QueryPerformanceCounter(&endPerformanceCount);
-                float elapsedMilliseconds = ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart) * 1000;
-                int fps = (int)((float)performanceFrequency.QuadPart / (float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart));
-                printf("Frame time: %0.01fms. FPS: %d\n ", elapsedMilliseconds, fps);
+                LARGE_INTEGER endPerformanceCount = getEndPerformanceCount();
+                float elapsedMilliseconds = getEllapsedMS(endPerformanceCount, startPerformanceCount, performanceFrequency);         
+                while (elapsedMilliseconds < desiredFrameTimeInMS){
+                    DWORD timeToSleep = (DWORD) (desiredFrameTimeInMS - elapsedMilliseconds);
+                    if (timeToSleep > 0) {
+                        Sleep(timeToSleep);
+                    }
+                    elapsedMilliseconds = getEllapsedMS(getEndPerformanceCount(), startPerformanceCount, performanceFrequency);
+                }
 
+                endPerformanceCount = getEndPerformanceCount();
+                elapsedMilliseconds = getEllapsedMS(endPerformanceCount, startPerformanceCount, performanceFrequency);         
+                float fps = 1000.0f / elapsedMilliseconds;
+                printf("Frame time: %0.01fms. FPS: %0.01f\n ", elapsedMilliseconds, fps);
                 startPerformanceCount = endPerformanceCount;
             }
         }
