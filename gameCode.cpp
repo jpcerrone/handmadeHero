@@ -1,12 +1,7 @@
-#include "main.h"
+#include "gameCode.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <iostream>
-#ifdef DEV_BUILD
-#define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
-#else
-#define Assert(expression)
-#endif
 
 void renderArgFlag(void *memory, int width, int height)
 {
@@ -89,8 +84,7 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     *waveOffset -= (int)*waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-void updateAndRender(GameMemory *gameMemory, uint32_t framesToWrite, void *bufferLocation, int samplesPerSec,
-                     void *memory, int width, int height, GameInputState inputState)
+extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 {
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
@@ -100,16 +94,16 @@ void updateAndRender(GameMemory *gameMemory, uint32_t framesToWrite, void *buffe
     }
 
     // Disabling for now as it's only for debugging.
-/*     FileReadResult result;
-    result = readFile("main.h");
-    writeFile("out.txt", result.memory, result.size);
-    freeFileMemory(result.memory); */
+    //FileReadResult result;
+    //result = gameMemory->readFile("main.h");
+    //gameMemory->writeFile("out.txt", result.memory, result.size);
+    //gameMemory->freeFileMemory(result.memory);
     if (inputState.A_Button.isDown){
         gameState->xOffset++;
     }
     gameState->frequency += inputState.Left_Stick.xPosition;
     loadSineWave(framesToWrite, bufferLocation, samplesPerSec, gameState->frequency, &gameState->waveOffset);
-    #if 1
+    #if 0
         renderGradient(memory, width, height, gameState->xOffset);
     #else
         renderArgFlag(memory, width, height);

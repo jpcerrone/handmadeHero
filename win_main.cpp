@@ -13,16 +13,15 @@
 #include <mmsystem.h>
 #include <math.h>
 #include <cinttypes>
-#include "main.cpp"
+
+#include "gameCode.h"
 
 #define REFTIMES_PER_SEC 10'000'000 // 100 nanoscend units, 1 seconds
-#define REFTIMES_PER_MILLISEC 10'000
+#define REFTIMES_PER_MILLISEC 10'000 
 
-#define LOG(p_string) std::cout << p_string << std::endl
 
 static int desiredFPS = 60;
 static bool gameRunning;
-
 struct Bitmap
 {
     void *memory;
@@ -37,6 +36,44 @@ static Bitmap globalBitmap;
 typedef DWORD(WINAPI *XInputGetState_t)(DWORD dwUserIndex, XINPUT_STATE *pState);
 XInputGetState_t xInputGetState;
 #define XInputGetState xInputGetState // Use the same name as defined in the dll
+
+struct GameCode_t {
+    HMODULE dllHandle;
+    FILETIME lastWriteTime = { 0, 0 };
+    updateAndRender_t *updateAndRender;
+};
+static GameCode_t GameCode; // TODO: casey makes this a local variable. It may make more sense to do so.
+void loadGameCode()
+{
+    char* dllPath = "gameCode.dll";
+    char* loadedDllPath = "gameCode_load.dll";
+
+    WIN32_FIND_DATA foundData;
+    HANDLE originalDllHandle = FindFirstFileA(dllPath, &foundData);
+    Assert(originalDllHandle);
+
+    LONG fileTimeComparisson = CompareFileTime(&foundData.ftLastWriteTime, &GameCode.lastWriteTime);
+    Assert(fileTimeComparisson != -1);
+    if (fileTimeComparisson != 0){
+        if (GameCode.dllHandle) { // The first time throught there'll be no handle.
+            FreeLibrary(GameCode.dllHandle);
+        }
+        GameCode.lastWriteTime = foundData.ftLastWriteTime;
+        CopyFile(dllPath, loadedDllPath, FALSE);
+        GameCode.dllHandle = LoadLibrary(loadedDllPath);
+        if (GameCode.dllHandle)
+        {
+            LOG(loadedDllPath);
+        }
+        else
+        {
+            LOG("Couldnt find gameCode dll");
+            return;
+        }
+        GameCode.updateAndRender = (updateAndRender_t*)GetProcAddress(GameCode.dllHandle, "updateAndRender");
+        Assert(GameCode.updateAndRender); //TODO: change
+    }
+}
 
 void resizeDibSection(int width, int height)
 {
@@ -247,7 +284,7 @@ void loadXInput()
     xInputGetState = (XInputGetState_t)GetProcAddress(handle, "XInputGetState");
 }
 
-bool writeFile(char *path, void *content, uint64_t bytesToWrite)
+WRITE_FILE(writeFile)
 {
     HANDLE fileHandle = CreateFile(path, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (fileHandle)
@@ -266,7 +303,7 @@ bool writeFile(char *path, void *content, uint64_t bytesToWrite)
     return false;
 };
 
-FileReadResult readFile(char *path)
+READ_FILE(readFile)
 {
     HANDLE fileHandle = CreateFile(path, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     FileReadResult result = {};
@@ -298,7 +335,7 @@ FileReadResult readFile(char *path)
     return result;
 }
 
-void freeFileMemory(void *memory)
+FREE_FILE_MEMORY(freeFileMemory)
 {
     VirtualFree(memory, 0, MEM_RELEASE);
 }
@@ -339,6 +376,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     initWASAPI();
     loadXInput();
+    loadGameCode();
 
     if (RegisterClass(&wc))
     {
@@ -360,11 +398,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             memory.transientStorageSize = 1 * 1024 * 1024 * 1024; // GB;
             memory.transientStorage = VirtualAlloc(0, (SIZE_T)memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             memory.isinitialized = false;
+            memory.readFile = readFile;
+            memory.writeFile = writeFile;
+            memory.freeFileMemory = freeFileMemory;
             // Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState newState = {};
 
             while (gameRunning)
             {
+                loadGameCode();
 
                 // Joypad Input
                 DWORD dwResult;
@@ -515,7 +557,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 assert(SUCCEEDED(hr));
 
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
-                updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+                GameCode.updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
                 fillWASAPIBuffer(numFramesAvailable);
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
 
