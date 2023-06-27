@@ -37,6 +37,35 @@ typedef DWORD(WINAPI *XInputGetState_t)(DWORD dwUserIndex, XINPUT_STATE *pState)
 XInputGetState_t xInputGetState;
 #define XInputGetState xInputGetState // Use the same name as defined in the dll
 
+void concatenateStrings(char* firstString, char* secondString, char* outString) {
+    while (*firstString != '\0') {
+        *outString++ = *firstString++;
+    };
+    while(*secondString != '\0') {
+        *outString++ = *secondString++;
+    };
+    *outString = '\0';
+}
+
+void copyString(char* ogString, int ogSize, char* newString, int newSize) {
+    for (int i = 0; i < newSize; i++) {
+        *newString = *ogString;
+        newString++;
+        ogString++;
+    }
+    *newString = '\0';
+};
+
+void getDirectoryFromPath(char* path, DWORD exeFileNameLength, char* directory) {
+    char* charPtr = path + exeFileNameLength;
+    int newSize = exeFileNameLength;
+    while (*charPtr != '\\') {
+        newSize --;
+        charPtr--;
+    }
+    copyString(path, exeFileNameLength, directory, newSize+1);
+};
+
 struct GameCode_t {
     HMODULE dllHandle;
     FILETIME lastWriteTime = { 0, 0 };
@@ -45,11 +74,21 @@ struct GameCode_t {
 static GameCode_t GameCode; // TODO: casey makes this a local variable. It may make more sense to do so.
 void loadGameCode()
 {
-    char* dllPath = "gameCode.dll";
-    char* loadedDllPath = "gameCode_load.dll";
+    char* dllName = "gameCode.dll";
+    char* loadedDllName = "gameCode_load.dll";
+
+    char exeFileName[MAX_PATH];
+    DWORD exeFileNameLength = GetModuleFileName(0, exeFileName, sizeof(exeFileName));
+    char folderPath[MAX_PATH];
+    getDirectoryFromPath(exeFileName, exeFileNameLength, folderPath);
+
+    char fullDllPath[MAX_PATH];
+    concatenateStrings(folderPath, dllName, fullDllPath);
+    char loadedDllPath[MAX_PATH];
+    concatenateStrings(folderPath, loadedDllName, loadedDllPath);
 
     WIN32_FIND_DATA foundData;
-    HANDLE originalDllHandle = FindFirstFileA(dllPath, &foundData);
+    HANDLE originalDllHandle = FindFirstFileA(fullDllPath, &foundData);
     Assert(originalDllHandle);
 
     LONG fileTimeComparisson = CompareFileTime(&foundData.ftLastWriteTime, &GameCode.lastWriteTime);
@@ -59,7 +98,7 @@ void loadGameCode()
             FreeLibrary(GameCode.dllHandle);
         }
         GameCode.lastWriteTime = foundData.ftLastWriteTime;
-        CopyFile(dllPath, loadedDllPath, FALSE);
+        CopyFile(fullDllPath, loadedDllPath, FALSE);
         GameCode.dllHandle = LoadLibrary(loadedDllPath);
         if (GameCode.dllHandle)
         {
