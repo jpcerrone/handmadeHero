@@ -87,18 +87,20 @@ void loadGameCode()
     char loadedDllPath[MAX_PATH];
     concatenateStrings(folderPath, loadedDllName, loadedDllPath);
 
-    WIN32_FIND_DATA foundData;
+    WIN32_FIND_DATA foundData = {};
     HANDLE originalDllHandle = FindFirstFileA(fullDllPath, &foundData);
-    Assert(originalDllHandle);
+    Assert(originalDllHandle != INVALID_HANDLE_VALUE);
+    FindClose(originalDllHandle);
 
     LONG fileTimeComparisson = CompareFileTime(&foundData.ftLastWriteTime, &GameCode.lastWriteTime);
     Assert(fileTimeComparisson != -1);
     if (fileTimeComparisson != 0){
-        if (GameCode.dllHandle) { // The first time throught there'll be no handle.
-            FreeLibrary(GameCode.dllHandle);
+        if (GameCode.dllHandle) { // The first time through there'll be no handle.
+            bool couldFree = FreeLibrary(GameCode.dllHandle);
+            assert(couldFree);
         }
         GameCode.lastWriteTime = foundData.ftLastWriteTime;
-        CopyFile(fullDllPath, loadedDllPath, FALSE);
+        while (!CopyFile(fullDllPath, loadedDllPath, FALSE)) {};// Perform CopyFile until it succeeds. Suposedely day 39 has a solution for this.
         GameCode.dllHandle = LoadLibrary(loadedDllPath);
         if (GameCode.dllHandle)
         {

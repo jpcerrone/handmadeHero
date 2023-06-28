@@ -103,7 +103,7 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     }
     gameState->frequency += inputState.Left_Stick.xPosition;
     loadSineWave(framesToWrite, bufferLocation, samplesPerSec, gameState->frequency, &gameState->waveOffset);
-    #if 0
+    #if 1
         renderGradient(memory, width, height, gameState->xOffset);
     #else
         renderArgFlag(memory, width, height);
