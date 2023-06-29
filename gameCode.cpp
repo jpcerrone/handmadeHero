@@ -48,6 +48,25 @@ void renderArgFlag(void *memory, int width, int height)
     }
 }
 
+void drawRectangle(void* bitmap, int bmWidth, int bmHeight, int recX, int recY, int recWidth, int recHeight) {
+    uint32_t* pixel = (uint32_t*)bitmap;
+    static uint32_t color = 0xFFFFFFFF;
+
+    // TODO: Add bounds checking.
+
+    // Go to upper left corner.
+    pixel += bmWidth*(recY - recHeight/2);
+    pixel += recX - recWidth / 2;
+
+    for (int y = 0; y < recHeight; y++) {
+        for (int x = 0; x < recWidth; x++) {
+            *pixel = color;
+            pixel++;
+        }
+        pixel += bmWidth - recWidth;
+    }
+}
+
 void renderGradient(void *memory, int width, int height, int xOffset)
 {
     // pixel = 4B = 32b
@@ -90,6 +109,10 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
     if (!gameMemory->isinitialized){
         gameState->frequency = 440;
+        gameState->playerX = 60;
+        gameState->playerY = 240;
+        gameState->jumping = false;
+        gameState->jumpProgress = 0.0f;
         gameMemory->isinitialized = true;
     }
 
@@ -101,11 +124,32 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     if (inputState.A_Button.isDown){
         gameState->xOffset++;
     }
+
+    // Jump
+    if (inputState.B_Button.isDown && !gameState->jumping) {
+        gameState->jumping = true;
+        gameState->jumpProgress = 0.0f;
+    }
+    if (gameState->jumping) {
+        gameState->playerY = 240 - (int)(150.0f*sin(gameState->jumpProgress*M_PI));
+        gameState->jumpProgress += 0.05f; // TODO: Calculate this based on the expected frames it should take.
+        if (gameState->jumpProgress >= 1.0f) {
+            gameState->jumping = false;
+        }
+    }
+
     gameState->frequency += inputState.Left_Stick.xPosition;
+    if (inputState.Left_Stick.xPosition < 0) {
+        gameState->playerX-=4;
+    }
+    if (inputState.Left_Stick.xPosition > 0) {
+        gameState->playerX+=4;
+    }
     loadSineWave(framesToWrite, bufferLocation, samplesPerSec, gameState->frequency, &gameState->waveOffset);
     #if 1
         renderGradient(memory, width, height, gameState->xOffset);
     #else
         renderArgFlag(memory, width, height);
     #endif
+    drawRectangle(memory, width, height, gameState->playerX, gameState->playerY, 20, 20);
 }

@@ -23,6 +23,9 @@ typedef READ_FILE(readFile_t);
 #define WRITE_FILE(name) bool name(char* path, void* content, uint64_t bytesToWrite)
 typedef WRITE_FILE(writeFile_t);
 
+#define APPEND_TO_FILE(name) bool name(char* path, void* content, uint64_t bytesToWrite)
+typedef APPEND_TO_FILE(appendToFile_t);
+
 #define FREE_FILE_MEMORY(name) void name(void* memory)
 typedef FREE_FILE_MEMORY(freeFileMemory_t);
 
@@ -42,6 +45,11 @@ struct GameState{
     int xOffset;
     float waveOffset;
     float frequency;
+
+    int playerX;
+    int playerY;
+    bool jumping;
+    float jumpProgress; // (0.0 to 1.0)
 };
 
 struct ButtonState{

@@ -9,7 +9,6 @@
 #include <mmdeviceapi.h>
 #include "test.h"
 #include <avrt.h>
-#include <assert.h>
 #include <mmsystem.h>
 #include <math.h>
 #include <cinttypes>
@@ -97,7 +96,7 @@ void loadGameCode()
     if (fileTimeComparisson != 0){
         if (GameCode.dllHandle) { // The first time through there'll be no handle.
             bool couldFree = FreeLibrary(GameCode.dllHandle);
-            assert(couldFree);
+            Assert(couldFree);
         }
         GameCode.lastWriteTime = foundData.ftLastWriteTime;
         while (!CopyFile(fullDllPath, loadedDllPath, FALSE)) {};// Perform CopyFile until it succeeds. Suposedely day 39 has a solution for this.
@@ -185,6 +184,15 @@ struct AudioState_t
 };
 static AudioState_t AudioState;
 
+struct Record_t {
+    int inputsWritten;
+    int inputsRead;
+    GameState gameState;
+    bool recording;
+    bool playing;
+};
+static Record_t Record;
+
 void initWASAPI()
 {
     int framesOfLatency = 2; // 1 frame of latency seems to not be possible.
@@ -193,17 +201,17 @@ void initWASAPI()
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
     hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     IMMDevice *device;
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void **)&(AudioState.audioClient));
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     hr = AudioState.audioClient->GetMixFormat(&AudioState.myFormat);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     WAVEFORMATEXTENSIBLE *waveFormatExtensible = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(AudioState.myFormat);
     waveFormatExtensible->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
@@ -213,19 +221,19 @@ void initWASAPI()
     waveFormatExtensible->Samples.wValidBitsPerSample = 16;
 
     hr = AudioState.audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, bufferSizeInSeconds, 0, AudioState.myFormat, NULL);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     hr = AudioState.audioClient->GetBufferSize(&AudioState.bufferFrameCount);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     hr = AudioState.audioClient->GetService(IID_PPV_ARGS(&AudioState.renderClient));
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     AudioState.buffer = (BYTE *)VirtualAlloc(0, waveFormatExtensible->Format.nAvgBytesPerSec, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    assert(AudioState.buffer);
+    Assert(AudioState.buffer);
 
     hr = AudioState.audioClient->Start();
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     // Should release all these in a destructor maybe
 
@@ -241,7 +249,7 @@ void fillWASAPIBuffer(int framesToWrite)
     // Grab the next empty buffer from the audio device.
     BYTE *renderBuffer;
     HRESULT hr = AudioState.renderClient->GetBuffer(framesToWrite, &renderBuffer);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 
     int16_t *renderSample = (int16_t *)renderBuffer;
     int16_t *inputSample = (int16_t *)AudioState.buffer;
@@ -254,7 +262,7 @@ void fillWASAPIBuffer(int framesToWrite)
     }
 
     hr = AudioState.renderClient->ReleaseBuffer(framesToWrite, 0);
-    assert(SUCCEEDED(hr));
+    Assert(SUCCEEDED(hr));
 }
 
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -331,18 +339,38 @@ WRITE_FILE(writeFile)
     if (fileHandle)
     {
         DWORD bytesWritten = 0;
+        DWORD error;
         if (WriteFile(fileHandle, content, (DWORD)bytesToWrite, &bytesWritten, NULL) && (bytesToWrite == bytesWritten))
         {
         }
         else
         {
-            // LOG ERROR
+            error = GetLastError();
         }
         CloseHandle(fileHandle);
         return true;
     }
     return false;
 };
+
+APPEND_TO_FILE(appendToFile) {
+    HANDLE fileHandle = CreateFile(path, FILE_APPEND_DATA, NULL, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (fileHandle)
+    {
+        DWORD bytesWritten = 0;
+        DWORD error;
+        if (WriteFile(fileHandle, content, (DWORD)bytesToWrite, &bytesWritten, NULL) && (bytesToWrite == bytesWritten))
+        {
+        }
+        else
+        {
+            error = GetLastError();
+        }
+        CloseHandle(fileHandle);
+        return true;
+    }
+    return false;
+}
 
 READ_FILE(readFile)
 {
@@ -407,13 +435,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     float desiredFrameTimeInMS = 1000.0f/desiredFPS;
 
     MMRESULT canQueryEveryMs = timeBeginPeriod(1); // TODO: maybe call timeEndPeriod?
-    assert(canQueryEveryMs == TIMERR_NOERROR);
+    Assert(canQueryEveryMs == TIMERR_NOERROR);
 
     globalBitmap.dimensions = {1920, 1080};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
     HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    assert(SUCCEEDED(init));
+    Assert(SUCCEEDED(init));
 
     initWASAPI();
     loadXInput();
@@ -445,6 +473,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             // Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
             GameInputState newState = {};
 
+            Record = {};
             while (gameRunning)
             {
                 loadGameCode();
@@ -561,6 +590,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                             case 'X':{
                                 newState.B_Button = {1, true};
                             } break;
+                            case 'R': { // Windows only for now.
+                                if (!wasDown)
+                                {
+                                    if (!Record.recording) {
+                                        writeFile("gameState.rec", memory.permanentStorage, memory.permanentStorageSize);
+                                        writeFile("inputRecord.rec", &newState, 0);
+                                        Record.recording = true;
+                                        Record.inputsWritten = 0;
+                                    } else {
+                                        FileReadResult savedState = readFile("gameState.rec");
+                                        Record.gameState = *((GameState*)savedState.memory);
+                                        GameState* currentState = (GameState*)memory.permanentStorage;
+                                        *currentState = Record.gameState;
+
+                                        Record.recording = false;
+                                        Record.inputsRead = 0;
+                                        Record.playing = true;
+                                    }
+                                }
+                            } break;
                             case VK_RIGHT:{
                                 newState.Left_Stick.xPosition = 1.0;
                             }break;
@@ -592,10 +641,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     break;
                     }
                 }
+                if (Record.recording) {
+                    appendToFile("inputRecord.rec", &newState, sizeof(newState));
+                    Record.inputsWritten++;
+                }
+                if (Record.playing) {
+                    FileReadResult inputRecord = readFile("inputRecord.rec");
+                    if (Record.inputsRead <= Record.inputsWritten) {
+                        GameInputState* input = ((GameInputState*)inputRecord.memory) + Record.inputsRead;
+                        Assert(input != nullptr);
+                        newState = *input;
+                        Record.inputsRead++;
+                    }
+                    else {
+                        Record.inputsRead = 0;
+                        GameState* currentState = (GameState*)memory.permanentStorage;
+                        *currentState = Record.gameState;
+                    }
+                }
 
                 UINT32 numFramesPadding;
                 HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
-                assert(SUCCEEDED(hr));
+                Assert(SUCCEEDED(hr));
 
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
                 GameCode.updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
