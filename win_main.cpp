@@ -86,19 +86,17 @@ void loadGameCode()
     char loadedDllPath[MAX_PATH];
     concatenateStrings(folderPath, loadedDllName, loadedDllPath);
 
-    WIN32_FIND_DATA foundData = {};
-    HANDLE originalDllHandle = FindFirstFileA(fullDllPath, &foundData);
-    Assert(originalDllHandle != INVALID_HANDLE_VALUE);
-    FindClose(originalDllHandle);
+    WIN32_FILE_ATTRIBUTE_DATA info;
+    Assert(GetFileAttributesEx(fullDllPath, GetFileExInfoStandard, &info));
 
-    LONG fileTimeComparisson = CompareFileTime(&foundData.ftLastWriteTime, &GameCode.lastWriteTime);
+    LONG fileTimeComparisson = CompareFileTime(&info.ftLastWriteTime, &GameCode.lastWriteTime);
     Assert(fileTimeComparisson != -1);
     if (fileTimeComparisson != 0){
         if (GameCode.dllHandle) { // The first time through there'll be no handle.
             bool couldFree = FreeLibrary(GameCode.dllHandle);
             Assert(couldFree);
         }
-        GameCode.lastWriteTime = foundData.ftLastWriteTime;
+        GameCode.lastWriteTime = info.ftLastWriteTime;
         while (!CopyFile(fullDllPath, loadedDllPath, FALSE)) {};// Perform CopyFile until it succeeds. Suposedely day 39 has a solution for this.
         GameCode.dllHandle = LoadLibrary(loadedDllPath);
         if (GameCode.dllHandle)
@@ -138,7 +136,8 @@ void resizeDibSection(int width, int height)
 
 void updateWindow(HDC deviceContext, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void *bitMapMemory, BITMAPINFO bitmapInfo)
 {
-    StretchDIBits(deviceContext, 0, 0, windowWidth, windowHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    // For now we ignore the size of the window to get 1:1 pixel rendering
+    StretchDIBits(deviceContext, 0, 0, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
 Dimension getWindowDimension(HWND windowHandle)
@@ -187,7 +186,7 @@ static AudioState_t AudioState;
 struct Record_t {
     int inputsWritten;
     int inputsRead;
-    GameState gameState;
+    void* gameState;
     bool recording;
     bool playing;
 };
@@ -196,7 +195,7 @@ static Record_t Record;
 void initWASAPI()
 {
     int framesOfLatency = 2; // 1 frame of latency seems to not be possible.
-    int bufferSizeInSeconds = REFTIMES_PER_SEC / (desiredFPS / framesOfLatency);
+    int bufferSizeInSeconds = (int)(REFTIMES_PER_SEC / (desiredFPS / (float)framesOfLatency));
 
     HRESULT hr;
     IMMDeviceEnumerator *enumerator;
@@ -432,27 +431,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance ? hInstance : GetModuleHandle(nullptr);
     wc.lpszClassName = "Engine";
 
-    float desiredFrameTimeInMS = 1000.0f/desiredFPS;
-
     MMRESULT canQueryEveryMs = timeBeginPeriod(1); // TODO: maybe call timeEndPeriod?
     Assert(canQueryEveryMs == TIMERR_NOERROR);
 
-    globalBitmap.dimensions = {1920, 1080};
+    globalBitmap.dimensions = {1080, 720};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
     HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     Assert(SUCCEEDED(init));
 
-    initWASAPI();
     loadXInput();
     loadGameCode();
 
+    ThreadContext thread = {};
+
     if (RegisterClass(&wc))
     {
-        HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
+        HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, globalBitmap.dimensions.width, globalBitmap.dimensions.height, 0, 0, hInstance, 0);
         if (windowHandle)
         {
             HDC windowDeviceContext = GetDC(windowHandle);
+            int monitorRefreshRate = GetDeviceCaps(windowDeviceContext, VREFRESH);
+            if (monitorRefreshRate) { // This sets the refresh rate to 59 on my monitor.
+                desiredFPS = monitorRefreshRate;
+            }
+            float desiredFrameTimeInMS = 1000.0f / desiredFPS;
+
+            initWASAPI();
 
             // Timing
             LARGE_INTEGER startPerformanceCount;
@@ -462,9 +467,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             // Main loop
             GameMemory memory;
-            memory.permanentStorageSize = 64 * 1024 * 1024; // MB;
+            // Note: compile in 64 bit if allocating >= 1GB of memory. with dev console 64.
+            memory.permanentStorageSize = 1 * 512 * 1024 * 1024; // MB;
             memory.permanentStorage = VirtualAlloc(0, (SIZE_T)memory.permanentStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            memory.transientStorageSize = 1 * 1024 * 1024 * 1024; // GB;
+            memory.transientStorageSize = 1 * 512 * 1024 * 1024; // MB;
             memory.transientStorage = VirtualAlloc(0, (SIZE_T)memory.transientStorageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             memory.isinitialized = false;
             memory.readFile = readFile;
@@ -474,6 +480,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             GameInputState newState = {};
 
             Record = {};
+            HANDLE stateRecHandle = CreateFile("gameState.rec", GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+            DWORD sizeHigh = (DWORD)(memory.permanentStorageSize << 32);
+            DWORD sizeLow = memory.permanentStorageSize & 0x00000000FFFFFFFF;
+            HANDLE stateFileMap = CreateFileMapping(stateRecHandle, 0, PAGE_READWRITE, sizeHigh , sizeLow, 0);
+            Record.gameState = MapViewOfFile(stateFileMap, FILE_MAP_ALL_ACCESS, 0, 0, (SIZE_T)memory.permanentStorageSize);
+            //DWORD error = GetLastError();
             while (gameRunning)
             {
                 loadGameCode();
@@ -542,6 +554,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         // Controller is not connected
                     }
                 }
+                POINT mousePos;
+                GetCursorPos(&mousePos);
+                ScreenToClient(windowHandle, &mousePos);
+                newState.mousePosition.x = mousePos.x;
+                newState.mousePosition.y = mousePos.y;
 
                 MSG message;
                 while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
@@ -594,16 +611,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                                 if (!wasDown)
                                 {
                                     if (!Record.recording) {
-                                        writeFile("gameState.rec", memory.permanentStorage, memory.permanentStorageSize);
-                                        writeFile("inputRecord.rec", &newState, 0);
+                                        CopyMemory(Record.gameState, memory.permanentStorage, (size_t)memory.permanentStorageSize);
+                                        writeFile(&thread, "inputRecord.rec", &newState, 0);
                                         Record.recording = true;
                                         Record.inputsWritten = 0;
                                     } else {
-                                        FileReadResult savedState = readFile("gameState.rec");
-                                        Record.gameState = *((GameState*)savedState.memory);
-                                        GameState* currentState = (GameState*)memory.permanentStorage;
-                                        *currentState = Record.gameState;
-
+                                        CopyMemory(memory.permanentStorage, Record.gameState, (size_t)memory.permanentStorageSize);
                                         Record.recording = false;
                                         Record.inputsRead = 0;
                                         Record.playing = true;
@@ -628,6 +641,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         }
                     }
                     break;
+                    case WM_RBUTTONDOWN: { //TODO: handle isDown, (hh day 25)
+                        newState.Mouse_R.isDown = true;
+                    } break;
+                    case WM_RBUTTONUP: {
+                        newState.Mouse_R.isDown = false;
+                    } break;
+                    case WM_LBUTTONDOWN: {
+                        newState.Mouse_L.isDown = true;
+                    } break;
+                    case WM_LBUTTONUP: {
+                        newState.Mouse_L.isDown = false;
+                    } break;
                     case WM_QUIT:
                     {
                         gameRunning = false;
@@ -642,11 +667,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     }
                 }
                 if (Record.recording) {
-                    appendToFile("inputRecord.rec", &newState, sizeof(newState));
+                    appendToFile(&thread, "inputRecord.rec", &newState, sizeof(newState));
                     Record.inputsWritten++;
                 }
                 if (Record.playing) {
-                    FileReadResult inputRecord = readFile("inputRecord.rec");
+                    FileReadResult inputRecord = readFile(&thread, "inputRecord.rec");
                     if (Record.inputsRead <= Record.inputsWritten) {
                         GameInputState* input = ((GameInputState*)inputRecord.memory) + Record.inputsRead;
                         Assert(input != nullptr);
@@ -655,8 +680,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     }
                     else {
                         Record.inputsRead = 0;
-                        GameState* currentState = (GameState*)memory.permanentStorage;
-                        *currentState = Record.gameState;
+                        CopyMemory(memory.permanentStorage, Record.gameState, (size_t)memory.permanentStorageSize);
                     }
                 }
 
@@ -665,7 +689,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 Assert(SUCCEEDED(hr));
 
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
-                GameCode.updateAndRender(&memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+                GameCode.updateAndRender(&thread, &memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
                 fillWASAPIBuffer(numFramesAvailable);
                 updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
 

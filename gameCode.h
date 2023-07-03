@@ -17,16 +17,20 @@ struct FileReadResult {
     void* memory;
 };
 
-#define READ_FILE(name) FileReadResult name(char* path)
+struct ThreadContext {
+    int placeHolder;
+};
+
+#define READ_FILE(name) FileReadResult name(ThreadContext *thread, char* path)
 typedef READ_FILE(readFile_t);
 
-#define WRITE_FILE(name) bool name(char* path, void* content, uint64_t bytesToWrite)
+#define WRITE_FILE(name) bool name(ThreadContext *thread, char* path, void* content, uint64_t bytesToWrite)
 typedef WRITE_FILE(writeFile_t);
 
-#define APPEND_TO_FILE(name) bool name(char* path, void* content, uint64_t bytesToWrite)
+#define APPEND_TO_FILE(name) bool name(ThreadContext *thread, char* path, void* content, uint64_t bytesToWrite)
 typedef APPEND_TO_FILE(appendToFile_t);
 
-#define FREE_FILE_MEMORY(name) void name(void* memory)
+#define FREE_FILE_MEMORY(name) void name(ThreadContext *thread, void* memory)
 typedef FREE_FILE_MEMORY(freeFileMemory_t);
 
 struct GameMemory{
@@ -39,6 +43,7 @@ struct GameMemory{
     readFile_t *readFile;
     writeFile_t *writeFile;
     freeFileMemory_t *freeFileMemory;
+    // TODO add append
 };
 
 struct GameState{
@@ -62,11 +67,20 @@ struct AxisState{
     float yPosition;
 };
 
+struct MousePosition {
+    int x;
+    int y;
+};
+
 struct GameInputState{
+    MousePosition mousePosition;
     union{
+        ButtonState mouseButtons[2];
         ButtonState buttons[4];
         AxisState axis[2];
         struct {
+            ButtonState Mouse_L;
+            ButtonState Mouse_R;
             ButtonState A_Button;
             ButtonState B_Button;
             ButtonState X_Button;
@@ -77,7 +91,7 @@ struct GameInputState{
     };
 };
 
-#define UPDATE_AND_RENDER(name) void name(GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* memory, int width, int height, GameInputState inputState)
+#define UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* memory, int width, int height, GameInputState inputState)
 typedef UPDATE_AND_RENDER(updateAndRender_t);
 
 // TODO: handle multiple controllers:

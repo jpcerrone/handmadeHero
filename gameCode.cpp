@@ -52,7 +52,10 @@ void drawRectangle(void* bitmap, int bmWidth, int bmHeight, int recX, int recY, 
     uint32_t* pixel = (uint32_t*)bitmap;
     static uint32_t color = 0xFFFFFFFF;
 
-    // TODO: Add bounds checking.
+    // TODO: Only clip invisible part
+    if (!(recX - recWidth /2 >= 0 && recX + recWidth /2 < bmWidth && recY - recHeight/2 >= 0 && recY + recHeight/2 < bmHeight)) {
+        return;
+    }
 
     // Go to upper left corner.
     pixel += bmWidth*(recY - recHeight/2);
@@ -78,7 +81,7 @@ void renderGradient(void *memory, int width, int height, int xOffset)
             uint8_t green = 0;
             uint8_t blue = (uint8_t)(x + xOffset);
             //*pixel = 0x000000FF; //xx RR GG BB -> little endian, most significant bits get loaded last (xx)
-            *pixel = (green << 8) | blue;
+            *pixel = (green << 16) | blue;
             pixel++;
         }
     }
@@ -152,4 +155,13 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         renderArgFlag(memory, width, height);
     #endif
     drawRectangle(memory, width, height, gameState->playerX, gameState->playerY, 20, 20);
+
+    // Mouse
+    drawRectangle(memory, width, height, inputState.mousePosition.x, inputState.mousePosition.y, 10, 10);
+    if (inputState.Mouse_L.isDown) {
+        drawRectangle(memory, width, height, 5, 5, 10, 10);
+    }
+    if (inputState.Mouse_R.isDown) {
+        drawRectangle(memory, width, height, 25, 5, 10, 10);
+    }
 }
