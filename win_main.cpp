@@ -136,8 +136,14 @@ void resizeDibSection(int width, int height)
 
 void updateWindow(HDC deviceContext, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void *bitMapMemory, BITMAPINFO bitmapInfo)
 {
+    static int offsetX = 15;
+    static int offsetY = 15;
     // For now we ignore the size of the window to get 1:1 pixel rendering
-    StretchDIBits(deviceContext, 0, 0, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    PatBlt(deviceContext, 0, 0, srcWidth, offsetY, BLACKNESS);
+    PatBlt(deviceContext, 0, 0, offsetX, srcHeight, BLACKNESS);
+    PatBlt(deviceContext, srcWidth, 0, windowWidth, windowHeight, BLACKNESS);
+    PatBlt(deviceContext, 0, srcHeight, windowWidth, windowHeight, BLACKNESS);
+    StretchDIBits(deviceContext, offsetX, offsetY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
 Dimension getWindowDimension(HWND windowHandle)
@@ -414,8 +420,8 @@ LARGE_INTEGER getEndPerformanceCount(){
     return endPerformanceCount;
 }
 
-float getEllapsedMS(LARGE_INTEGER endPerformanceCount, LARGE_INTEGER startPerformanceCount, LARGE_INTEGER performanceFrequency){
-    return ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart) * 1000;          
+float getEllapsedSeconds(LARGE_INTEGER endPerformanceCount, LARGE_INTEGER startPerformanceCount, LARGE_INTEGER performanceFrequency){
+    return ((float)(endPerformanceCount.QuadPart - startPerformanceCount.QuadPart) / (float)performanceFrequency.QuadPart);          
 }
 
 // hInstance: handle to the .exe
@@ -434,7 +440,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     MMRESULT canQueryEveryMs = timeBeginPeriod(1); // TODO: maybe call timeEndPeriod?
     Assert(canQueryEveryMs == TIMERR_NOERROR);
 
-    globalBitmap.dimensions = {1080, 720};
+    globalBitmap.dimensions = {960, 540};
     resizeDibSection(globalBitmap.dimensions.width, globalBitmap.dimensions.height);
 
     HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -451,12 +457,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (windowHandle)
         {
             HDC windowDeviceContext = GetDC(windowHandle);
+            #if 0
             int monitorRefreshRate = GetDeviceCaps(windowDeviceContext, VREFRESH);
             if (monitorRefreshRate) { // This sets the refresh rate to 59 on my monitor.
                 desiredFPS = monitorRefreshRate;
             }
-            float desiredFrameTimeInMS = 1000.0f / desiredFPS;
-
+            #endif
+            float desiredFrameTimeInS = 1.0f / desiredFPS;
             initWASAPI();
 
             // Timing
@@ -593,6 +600,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                             case VK_LEFT:{
                                 newState.Left_Stick.xPosition = 0.0;
                             }break;
+                            case VK_UP: { // TODO: simplify into an or with the next one
+                                newState.Left_Stick.yPosition = 0.0;
+                            }break;
+                            case VK_DOWN: {
+                                newState.Left_Stick.yPosition = 0.0;
+                            }break;
                             default: break;
                         }
                     }
@@ -628,6 +641,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                             }break;
                             case VK_LEFT:{
                                 newState.Left_Stick.xPosition = -1.0;
+                            }break;
+                            case VK_UP: {
+                                newState.Left_Stick.yPosition = -1.0;
+                            }break;
+                            case VK_DOWN: {
+                                newState.Left_Stick.yPosition = 1.0;
                             }break;
                             case VK_SPACE:
                             {
@@ -684,31 +703,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     }
                 }
 
+
                 UINT32 numFramesPadding;
                 HRESULT hr = AudioState.audioClient->GetCurrentPadding(&numFramesPadding);
                 Assert(SUCCEEDED(hr));
-
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
-                GameCode.updateAndRender(&thread, &memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
                 fillWASAPIBuffer(numFramesAvailable);
-                updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
 
+                newState.deltaTime = (float)(1.0f / desiredFPS);
+                GameCode.updateAndRender(&thread, &memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+
+                
                 // Timing
                 LARGE_INTEGER endPerformanceCount = getEndPerformanceCount();
-                float elapsedMilliseconds = getEllapsedMS(endPerformanceCount, startPerformanceCount, performanceFrequency);         
-                while (elapsedMilliseconds < desiredFrameTimeInMS){
-                    DWORD timeToSleep = (DWORD) (desiredFrameTimeInMS - elapsedMilliseconds);
-                    if (timeToSleep > 0) {
-                        Sleep(timeToSleep);
-                    }
-                    elapsedMilliseconds = getEllapsedMS(getEndPerformanceCount(), startPerformanceCount, performanceFrequency);
-                }
+                float elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);   
+#if 0
+                char outB4[256];
+                _snprintf_s(outB4, sizeof(outB4), "Frame time: %0.01fms. ", elapsedSeconds * 1000);
+                OutputDebugString(outB4);
+#endif
+               
 
-                endPerformanceCount = getEndPerformanceCount();
-                elapsedMilliseconds = getEllapsedMS(endPerformanceCount, startPerformanceCount, performanceFrequency);         
-                float fps = 1000.0f / elapsedMilliseconds;
-                printf("Frame time: %0.01fms. FPS: %0.01f\n ", elapsedMilliseconds, fps);
+                if (elapsedSeconds < desiredFrameTimeInS){
+                    DWORD timeToSleep = (DWORD) (1000.0f*(desiredFrameTimeInS - elapsedSeconds));
+                    Sleep(timeToSleep);
+                    while (elapsedSeconds < desiredFrameTimeInS) {
+                        endPerformanceCount = getEndPerformanceCount();
+                        elapsedSeconds = getEllapsedSeconds(endPerformanceCount, startPerformanceCount, performanceFrequency);
+                    }
+                }
+#if 0
+
+                char outMS[256];
+                float fps = 1.0f / elapsedSeconds;
+                _snprintf_s(outMS, sizeof(outMS), "Frame time: %0.01fms. FPS: %0.01f\n ", elapsedSeconds * 1000.0f, fps);
+                OutputDebugString(outMS);
+#endif
                 startPerformanceCount = endPerformanceCount;
+                updateWindow(windowDeviceContext, globalBitmap.dimensions.width, globalBitmap.dimensions.height, clientWindowDimensions.width, clientWindowDimensions.height, globalBitmap.memory, globalBitmap.info);
             }
         }
         else

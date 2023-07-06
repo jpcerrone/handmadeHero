@@ -47,14 +47,8 @@ struct GameMemory{
 };
 
 struct GameState{
-    int xOffset;
-    float waveOffset;
-    float frequency;
-
-    int playerX;
-    int playerY;
-    bool jumping;
-    float jumpProgress; // (0.0 to 1.0)
+    float playerX;
+    float playerY;
 };
 
 struct ButtonState{
@@ -73,6 +67,7 @@ struct MousePosition {
 };
 
 struct GameInputState{
+    float deltaTime;
     MousePosition mousePosition;
     union{
         ButtonState mouseButtons[2];
