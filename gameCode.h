@@ -47,6 +47,8 @@ struct GameMemory{
 };
 
 struct GameState{
+    int currentTileMapX = 0;
+    int currentTileMapY = 0;
     float playerX;
     float playerY;
 };

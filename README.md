@@ -4,7 +4,7 @@ My second attempt at following https://handmadehero.org/ . A series on implement
 
 The code is in a highly experimental state so expect it to be very ugly and unsctructured.
 
-Currently on day 19.
+Currently on day 31.
 
 ## Things implemented so far:
 * Windows message queue processing.
@@ -14,3 +14,6 @@ Currently on day 19.
 * Abstracted platform-specific code into a platform layer.
 * Frame time and FPS reporting.
 * Basic utility for reading and writing files.
+* Game input reporting and playback for debugging.
+* Tilemap system.
+* Collision checking.

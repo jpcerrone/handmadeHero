@@ -126,24 +126,69 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
 #define tileMapHeight 9
 struct TileMap {
     int* map;
-    int getTileValue(int y, int x) {
-        return map[y* tileMapWidth + x];
-    }
-    bool canMove(int y, int x) {
-        if ((x < 0) || (x >= tileMapWidth) || (y < 0) || (y >= tileMapHeight)){
-            return false;
-        }
-        return getTileValue(y, x) == 0;
-    }
 };
 
 #define WORLD_WIDTH 2
 #define WORLD_HEIGHT 2
 struct World {
     TileMap* tilemaps;
-    TileMap getTileMap(int y, int x) {
-        return tilemaps[y * WORLD_WIDTH + x];
+    int tileSize = 48;
+    TileMap* getTileMap(int y, int x) {
+        if ((y >= 0) && (x >= 0) && (y < WORLD_HEIGHT) && (x < WORLD_WIDTH)) {
+            return &tilemaps[y * WORLD_WIDTH + x];
+        }
+        else {
+            return nullptr;
+        }
     }
+};
+
+int getTileValue(World world, int tileMapY, int tileMapX, int y, int x) {
+    return world.getTileMap(tileMapY, tileMapX)->map[y * tileMapWidth + x];
+}
+
+bool canMove(World world, int tileSetY, int tileSetX, int y, int x) { // Todo pointer instead?
+    if (x >= tileMapWidth) {
+        if (world.getTileMap(tileSetY, tileSetX + 1)) {
+            return getTileValue(world, tileSetY, tileSetX+1, y, 0) == 0;
+        }
+        else {
+            return false;
+        }
+    }
+    if ((x < 0)) {
+        if (world.getTileMap(tileSetY, tileSetX - 1)) {
+            return getTileValue(world, tileSetY, tileSetX - 1, y, tileMapWidth - 1) == 0;
+        }
+        else {
+            return false;
+        }
+    }
+    if (y >= tileMapHeight) {
+        if (world.getTileMap(tileSetY + 1, tileSetX)) {
+            return getTileValue(world, tileSetY + 1, tileSetX, 0, x) == 0;
+        }
+        else {
+            return false;
+        }
+    }
+    if ((y < 0)) {
+        if (world.getTileMap(tileSetY - 1, tileSetX)) {
+            return getTileValue(world, tileSetY - 1, tileSetX, tileMapHeight - 1, x) == 0;
+        }
+        else {
+            return false;
+        }
+    }
+    return getTileValue(world, tileSetY, tileSetX, y, x) == 0;
+}
+
+struct WorldCoordinate {
+    int tileMapX;
+    int tileMapY;
+
+    float playerTileOffsetY;
+    float playerTileOffsetX;
 };
 
 int playerPosToTileIdx(float playerPos, int tileSize) {
@@ -152,6 +197,39 @@ int playerPosToTileIdx(float playerPos, int tileSize) {
     }
     return (int)((playerPos / (float)tileSize));
 };
+
+WorldCoordinate move(World* currentWorld, int currentTileMapY, int currentTileMapX, float playerY, float playerX) {
+    WorldCoordinate retCoordinate = {};
+    retCoordinate.tileMapY = currentTileMapY;
+    retCoordinate.tileMapX = currentTileMapX;
+
+    int currentTileY = playerPosToTileIdx(playerY, currentWorld->tileSize);
+    int currentTileX = playerPosToTileIdx(playerX, currentWorld->tileSize);
+    if (currentTileX >= tileMapWidth) {
+        retCoordinate.tileMapY = currentTileMapY;
+        retCoordinate.tileMapX = currentTileMapX + 1;
+        playerX = 0;
+    }
+    if (currentTileX < 0) {
+        retCoordinate.tileMapY = currentTileMapY;
+        retCoordinate.tileMapX = currentTileMapX - 1;
+        playerX = (float) (tileMapWidth* currentWorld->tileSize);
+    }
+    if (currentTileY >= tileMapHeight) {
+        retCoordinate.tileMapY = currentTileMapY + 1;
+        retCoordinate.tileMapX = currentTileMapX;
+        playerY = 0;
+    }
+    if (currentTileY < 0) {
+        retCoordinate.tileMapY = currentTileMapY - 1;
+        retCoordinate.tileMapX = currentTileMapX;
+        playerY = (float) (tileMapHeight* currentWorld->tileSize);
+    }
+
+    retCoordinate.playerTileOffsetY = playerY; //TODO: convert to tile offset
+    retCoordinate.playerTileOffsetX = playerX;
+    return retCoordinate;
+}
 
 extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 {
@@ -181,25 +259,25 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     TileMap t1;
     int t1Map[tileMapHeight][tileMapWidth] = {
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,1,0,1, 0,0,0,0, 0,1,1,0, 0,0,0,0, 0},
+        {0,0,0,1, 0,0,0,0, 0,1,1,0, 0,0,0,0, 0},
         {0,0,1,0, 0,0,0,0, 0,1,1,0, 0,0,0,0, 0},
         {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1},
     };
     t1.map = (int*)t1Map;
     TileMap t2;
     int t2Map[tileMapHeight][tileMapWidth] = {
+        {0,0,1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,1,0,1, 0,0,0,0, 0,1,1,0, 0,0,0,0, 0},
-        {0,0,1,0, 0,0,0,0, 0,1,1,0, 0,0,0,0, 0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0},
-        {0,0,0,0, 1,0,0,0, 0,0,0,0, 0,1,0,0, 0},
-        {0,0,0,0, 0,1,0,0, 0,0,0,0, 0,0,1,0, 0},
+        {0,1,1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,0, 0,1,0,0, 0,0,1,1, 1,1,1,0, 0},
         {0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,0,1, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1},
     };
@@ -207,10 +285,10 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     TileMap t3;
     int t3Map[tileMapHeight][tileMapWidth] = {
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 0},
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 0},
@@ -223,11 +301,8 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         {t2, t3},
     };
     overworld.tilemaps = (TileMap*)tileArray;
-    TileMap* currentTileMap = &t0;
 
-    int tileSize = 48;
-
-    float playerSpeed = 120.0f;
+    float playerSpeed = 240.0f;
     float playerWidth = 32;
     float playerHeight = 48;
     float newPlayerX = gameState->playerX;
@@ -245,14 +320,16 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         newPlayerY += playerSpeed * inputState.deltaTime;
     }
 
-    int tileForNewY = playerPosToTileIdx(newPlayerY + (playerHeight / 2.0f), tileSize);
-    int tileForLeftX = playerPosToTileIdx(newPlayerX - (playerWidth / 2.0f), tileSize);
-    int tileForRightX = playerPosToTileIdx(newPlayerX + (playerWidth / 2.0f), tileSize);
+    int tileForNewY = playerPosToTileIdx(newPlayerY + (playerHeight / 2.0f), overworld.tileSize);
+    int tileForLeftX = playerPosToTileIdx(newPlayerX - (playerWidth / 2.0f), overworld.tileSize);
+    int tileForRightX = playerPosToTileIdx(newPlayerX + (playerWidth / 2.0f), overworld.tileSize);
 
-
-    if ((currentTileMap->canMove(tileForNewY, tileForLeftX)) && (currentTileMap->canMove(tileForNewY, tileForRightX))) {
-        gameState->playerX = newPlayerX;
-        gameState->playerY = newPlayerY;
+    if ((canMove(overworld, gameState->currentTileMapY, gameState->currentTileMapX, tileForNewY, tileForLeftX)) && (canMove(overworld, gameState->currentTileMapY, gameState->currentTileMapX, tileForNewY, tileForRightX))) {
+        WorldCoordinate coordinate = move(&overworld, gameState->currentTileMapY, gameState->currentTileMapX, newPlayerY, newPlayerX);
+        gameState->playerY = coordinate.playerTileOffsetY;
+        gameState->playerX = coordinate.playerTileOffsetX;
+        gameState->currentTileMapY = coordinate.tileMapY;
+        gameState->currentTileMapX = coordinate.tileMapX;
     }
 
     drawRectangle(memory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
@@ -262,11 +339,11 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     float grayShadeForTile = 0.5;
     for (int j = 0; j < tileMapHeight; j++) {
         for (int i = 0; i < tileMapWidth; i++) {
-            int minX = tileSize * i;
-            int maxX = tileSize * (i + 1);
-            int minY = tileSize * j;
-            int maxY = tileSize * (j + 1);
-            if (currentTileMap->getTileValue(j,i) == 0) {
+            int minX = overworld.tileSize * i;
+            int maxX = overworld.tileSize * (i + 1);
+            int minY = overworld.tileSize * j;
+            int maxY = overworld.tileSize * (j + 1);
+            if (getTileValue(overworld, gameState->currentTileMapY, gameState->currentTileMapX, j, i) == 0) {
                 grayShadeForTile = 0.5;
             }
             else {
