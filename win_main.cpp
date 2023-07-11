@@ -136,8 +136,8 @@ void resizeDibSection(int width, int height)
 
 void updateWindow(HDC deviceContext, int srcWidth, int srcHeight, int windowWidth, int windowHeight, void *bitMapMemory, BITMAPINFO bitmapInfo)
 {
-    static int offsetX = 15;
-    static int offsetY = 15;
+    static int offsetX = 0;
+    static int offsetY = 0;
     // For now we ignore the size of the window to get 1:1 pixel rendering
     PatBlt(deviceContext, 0, 0, srcWidth, offsetY, BLACKNESS);
     PatBlt(deviceContext, 0, 0, offsetX, srcHeight, BLACKNESS);
@@ -453,7 +453,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     if (RegisterClass(&wc))
     {
-        HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, globalBitmap.dimensions.width, globalBitmap.dimensions.height, 0, 0, hInstance, 0);
+        RECT desiredClientSize;
+        desiredClientSize.left = 0;
+        desiredClientSize.right = globalBitmap.dimensions.width;
+        desiredClientSize.top = 0;
+        desiredClientSize.bottom = globalBitmap.dimensions.height;
+
+        DWORD windowStyles = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+        AdjustWindowRectEx(&desiredClientSize, windowStyles, false, 0);
+        HWND windowHandle = CreateWindowEx(0, wc.lpszClassName, "Jodot Engine", windowStyles , CW_USEDEFAULT, CW_USEDEFAULT, 
+            desiredClientSize.right - desiredClientSize.left, desiredClientSize.bottom - desiredClientSize.top, 0, 0, hInstance, 0);
         if (windowHandle)
         {
             HDC windowDeviceContext = GetDC(windowHandle);

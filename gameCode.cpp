@@ -3,51 +3,6 @@
 #include <math.h>
 #include <iostream>
 
-void renderArgFlag(void *memory, int width, int height)
-{
-    const uint32_t lightBlueColor = 0xadd8e6; // RGB
-    const uint32_t whiteColor = 0xFFFFFF;     // RGB
-    uint32_t *pixel = (uint32_t *)memory;
-    for (int y = 0; y < height / 3; y++)
-    {
-        for (int x = 0; x < width; x++)
-        {
-            *pixel = lightBlueColor;
-            pixel++;
-        }
-    }
-    for (int y = height / 3; y < height * 2 / 3; y++)
-    {
-        for (int x = 0; x < width; x++)
-        {
-            *pixel = whiteColor;
-            pixel++;
-        }
-    }
-    for (int y = height * 2 / 3; y < height; y++)
-    {
-        for (int x = 0; x < width; x++)
-        {
-            *pixel = lightBlueColor;
-            pixel++;
-        }
-    }
-
-    int radius = 100;
-    const uint32_t yellowColor = 0xFFBF00; // RGB
-    pixel = (uint32_t *)memory;
-    pixel += (height / 2 - radius) * (width) + (width / 2 - radius);
-    for (int y = height / 2 - radius; y < height / 2 + radius; y++)
-    {
-        for (int x = width / 2 - radius; x < width / 2 + radius; x++)
-        {
-            *pixel = yellowColor;
-            pixel++;
-        }
-        pixel += width - 2 * radius;
-    }
-}
-
 int roundFloat(float value) {
     return (int)(value + 0.5f);
 }
@@ -68,6 +23,10 @@ void drawRectangle(void* bitmap, int bmWidth, int bmHeight, float minX, float mi
     if (maxY > bmHeight)
         maxY = (float)bmHeight;
 
+    float tmp = maxY;
+    maxY = bmHeight - minY;
+    minY = bmHeight - tmp;
+
     uint32_t color = (0xFF << 24) | (roundUFloat(r*255.0f) << 16) | (roundUFloat(g * 255.0f) << 8) | (roundUFloat(b * 255.0f) << 0); //0xAA RR GG BB 0b1111
     
     // Go to upper left corner.
@@ -83,23 +42,6 @@ void drawRectangle(void* bitmap, int bmWidth, int bmHeight, float minX, float mi
             pixel++;
         }
         pixel += bmWidth - recWidth;
-    }
-}
-
-void renderGradient(void *memory, int width, int height, int xOffset)
-{
-    // pixel = 4B = 32b
-    uint32_t *pixel = (uint32_t *)memory;
-    for (int y = 0; y < height; y++)
-    {
-        for (int x = 0; x < width; x++)
-        {
-            uint8_t green = 0;
-            uint8_t blue = (uint8_t)(x + xOffset);
-            //*pixel = 0x000000FF; //xx RR GG BB -> little endian, most significant bits get loaded last (xx)
-            *pixel = (green << 16) | blue;
-            pixel++;
-        }
     }
 }
 
@@ -132,7 +74,7 @@ struct TileMap {
 #define WORLD_HEIGHT 2
 struct World {
     TileMap* tilemaps;
-    int tileSize = 48;
+    float tileSize = 1.0;
     TileMap* getTileMap(int y, int x) {
         if ((y >= 0) && (x >= 0) && (y < WORLD_HEIGHT) && (x < WORLD_WIDTH)) {
             return &tilemaps[y * WORLD_WIDTH + x];
@@ -148,6 +90,9 @@ int getTileValue(World world, int tileMapY, int tileMapX, int y, int x) {
 }
 
 bool canMove(World world, int tileSetY, int tileSetX, int y, int x) { // Todo pointer instead?
+    if ((tileSetY < 0) || (tileSetX < 0) || (tileSetY >= WORLD_HEIGHT) || (tileSetX >= WORLD_WIDTH)) { // Out of bounds
+        return false;
+    }
     if (x >= tileMapWidth) {
         if (world.getTileMap(tileSetY, tileSetX + 1)) {
             return getTileValue(world, tileSetY, tileSetX+1, y, 0) == 0;
@@ -183,52 +128,59 @@ bool canMove(World world, int tileSetY, int tileSetX, int y, int x) { // Todo po
     return getTileValue(world, tileSetY, tileSetX, y, x) == 0;
 }
 
-struct WorldCoordinate {
-    int tileMapX;
-    int tileMapY;
-
-    float playerTileOffsetY;
-    float playerTileOffsetX;
-};
-
-int playerPosToTileIdx(float playerPos, int tileSize) {
-    if (playerPos < 0) {
-        return -1;
+Coordinate getCanonCoordinate(World *world, int mapX, int mapY, int tileX, int tileY, float offsetX, float offsetY) {
+    Coordinate retCoord;
+    retCoord.mapX = mapX;
+    retCoord.mapY = mapY;
+    retCoord.tileX = tileX;
+    retCoord.tileY = tileY;
+    retCoord.offsetX = offsetX;
+    retCoord.offsetY = offsetY;
+    // Offset
+    if (retCoord.offsetX > world->tileSize) {
+        retCoord.offsetX -= world->tileSize;
+        retCoord.tileX += 1;
     }
-    return (int)((playerPos / (float)tileSize));
-};
-
-WorldCoordinate move(World* currentWorld, int currentTileMapY, int currentTileMapX, float playerY, float playerX) {
-    WorldCoordinate retCoordinate = {};
-    retCoordinate.tileMapY = currentTileMapY;
-    retCoordinate.tileMapX = currentTileMapX;
-
-    int currentTileY = playerPosToTileIdx(playerY, currentWorld->tileSize);
-    int currentTileX = playerPosToTileIdx(playerX, currentWorld->tileSize);
-    if (currentTileX >= tileMapWidth) {
-        retCoordinate.tileMapY = currentTileMapY;
-        retCoordinate.tileMapX = currentTileMapX + 1;
-        playerX = 0;
+    if (retCoord.offsetX < 0) {
+        retCoord.offsetX += world->tileSize;
+        retCoord.tileX -= 1;
     }
-    if (currentTileX < 0) {
-        retCoordinate.tileMapY = currentTileMapY;
-        retCoordinate.tileMapX = currentTileMapX - 1;
-        playerX = (float) (tileMapWidth* currentWorld->tileSize);
+    if (retCoord.offsetY > world->tileSize) {
+        retCoord.offsetY -= world->tileSize;
+        retCoord.tileY += 1;
     }
-    if (currentTileY >= tileMapHeight) {
-        retCoordinate.tileMapY = currentTileMapY + 1;
-        retCoordinate.tileMapX = currentTileMapX;
-        playerY = 0;
-    }
-    if (currentTileY < 0) {
-        retCoordinate.tileMapY = currentTileMapY - 1;
-        retCoordinate.tileMapX = currentTileMapX;
-        playerY = (float) (tileMapHeight* currentWorld->tileSize);
+    if (retCoord.offsetY < 0) {
+        retCoord.offsetY += world->tileSize;
+        retCoord.tileY -= 1;
     }
 
-    retCoordinate.playerTileOffsetY = playerY; //TODO: convert to tile offset
-    retCoordinate.playerTileOffsetX = playerX;
-    return retCoordinate;
+    // Tile
+    if (retCoord.tileX >= tileMapWidth) {
+        retCoord.tileX = 0;
+        retCoord.mapX += 1;
+    }
+    if (retCoord.tileX < 0) {
+        retCoord.tileX = tileMapWidth - 1;
+        retCoord.mapX -= 1;
+    }
+    if (retCoord.tileY >= tileMapHeight) {
+        retCoord.tileY = 0;
+        retCoord.mapY += 1;
+    }
+    if (retCoord.tileY < 0) {
+        retCoord.tileY = tileMapHeight - 1;
+        retCoord.mapY -= 1;
+    }
+    return retCoord;
+}
+
+const float pixelsPerUnit = 48.0f;
+
+float pixelsToUnits(float pixelMagnitude) {
+    return (float)pixelMagnitude / pixelsPerUnit;
+}
+float unitsToPixels(float unitMagnitude) {
+    return unitMagnitude * pixelsPerUnit;
 }
 
 extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
@@ -236,15 +188,19 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
     if (!gameMemory->isinitialized){
-        gameState->playerX = 60.0f;
-        gameState->playerY = 240.0f;
+        gameState->playerCoord.mapX = 0;
+        gameState->playerCoord.mapY = 0;
+        gameState->playerCoord.tileX = 5;
+        gameState->playerCoord.tileY = 5;
+        gameState->playerCoord.offsetX = 0.0f;
+        gameState->playerCoord.offsetY = 0.0f;
         gameMemory->isinitialized = true;
     }
 
     World overworld;
 
     TileMap t0;
-    int t0Map[tileMapHeight][tileMapWidth] = {
+    int t0Map[tileMapHeight][tileMapWidth] = { // This is from bottom to top
         {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
         {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
@@ -302,57 +258,73 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     };
     overworld.tilemaps = (TileMap*)tileArray;
 
-    float playerSpeed = 240.0f;
-    float playerWidth = 32;
-    float playerHeight = 48;
-    float newPlayerX = gameState->playerX;
-    float newPlayerY = gameState->playerY;
+    float playerSpeed = 5.0f;
+    float playerWidth = 0.8f;
+    float playerHeight = 1;
+    float newOffsetX = gameState->playerCoord.offsetX;
+    float newOffsetY = gameState->playerCoord.offsetY;
     if (inputState.Left_Stick.xPosition < 0) {
-        newPlayerX -= playerSpeed *inputState.deltaTime;
+        newOffsetX -= pixelsToUnits(unitsToPixels(playerSpeed) *inputState.deltaTime);
     }
     if (inputState.Left_Stick.xPosition > 0) {
-        newPlayerX += playerSpeed * inputState.deltaTime;
+        newOffsetX += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
     }
     if (inputState.Left_Stick.yPosition < 0) {
-        newPlayerY -= playerSpeed * inputState.deltaTime;
+        newOffsetY += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
     }
     if (inputState.Left_Stick.yPosition > 0) {
-        newPlayerY += playerSpeed * inputState.deltaTime;
+        newOffsetY -= pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
     }
 
-    int tileForNewY = playerPosToTileIdx(newPlayerY + (playerHeight / 2.0f), overworld.tileSize);
-    int tileForLeftX = playerPosToTileIdx(newPlayerX - (playerWidth / 2.0f), overworld.tileSize);
-    int tileForRightX = playerPosToTileIdx(newPlayerX + (playerWidth / 2.0f), overworld.tileSize);
-
-    if ((canMove(overworld, gameState->currentTileMapY, gameState->currentTileMapX, tileForNewY, tileForLeftX)) && (canMove(overworld, gameState->currentTileMapY, gameState->currentTileMapX, tileForNewY, tileForRightX))) {
-        WorldCoordinate coordinate = move(&overworld, gameState->currentTileMapY, gameState->currentTileMapX, newPlayerY, newPlayerX);
-        gameState->playerY = coordinate.playerTileOffsetY;
-        gameState->playerX = coordinate.playerTileOffsetX;
-        gameState->currentTileMapY = coordinate.tileMapY;
-        gameState->currentTileMapX = coordinate.tileMapX;
+    int newTileCenterX = gameState->playerCoord.tileX;
+    int newTileCenterY = gameState->playerCoord.tileY;
+    int newMapX = gameState->playerCoord.mapX;
+    int newMapY = gameState->playerCoord.mapY;
+    Coordinate middle = getCanonCoordinate(&overworld, newMapX, newMapY, newTileCenterX, newTileCenterY, newOffsetX, newOffsetY);
+    Coordinate left = getCanonCoordinate(&overworld, newMapX, newMapY, newTileCenterX, newTileCenterY, newOffsetX - playerWidth/2.0f, newOffsetY + playerHeight / 2.0f);
+    Coordinate right = getCanonCoordinate(&overworld, newMapX, newMapY, newTileCenterX, newTileCenterY, newOffsetX + playerWidth / 2.0f, newOffsetY + playerHeight/2.0f);
+    if (canMove(overworld, right.mapY, right.mapX, right.tileY, right.tileX) 
+        && canMove(overworld, left.mapY, left.mapX, left.tileY, left.tileX)
+        && canMove(overworld, middle.mapY, middle.mapX, middle.tileY, middle.tileX)) {
+        gameState->playerCoord.mapX = middle.mapX;
+        gameState->playerCoord.mapY = middle.mapY;
+        gameState->playerCoord.tileX = middle.tileX;
+        gameState->playerCoord.tileY = middle.tileY;
+        gameState->playerCoord.offsetX = middle.offsetX;
+        gameState->playerCoord.offsetY = middle.offsetY;
     }
 
     drawRectangle(memory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
-
 
     // Draw TileMap
     float grayShadeForTile = 0.5;
     for (int j = 0; j < tileMapHeight; j++) {
         for (int i = 0; i < tileMapWidth; i++) {
-            int minX = overworld.tileSize * i;
-            int maxX = overworld.tileSize * (i + 1);
-            int minY = overworld.tileSize * j;
-            int maxY = overworld.tileSize * (j + 1);
-            if (getTileValue(overworld, gameState->currentTileMapY, gameState->currentTileMapX, j, i) == 0) {
+            if (getTileValue(overworld, gameState->playerCoord.mapY, gameState->playerCoord.mapX, j, i) == 0) {
                 grayShadeForTile = 0.5;
             }
             else {
                 grayShadeForTile = 1.0;
             }
-            drawRectangle(memory, width, height, (float)minX, (float)minY, (float)maxX, (float)maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
+            if ((gameState->playerCoord.tileX == i) && (gameState->playerCoord.tileY == (j))) {
+                grayShadeForTile = 0.2f;
+            }
+            float minX = unitsToPixels(overworld.tileSize * i);
+            float maxX = unitsToPixels(overworld.tileSize * (i + 1));
+
+            float minY = unitsToPixels(overworld.tileSize *j);
+            float maxY = unitsToPixels(overworld.tileSize * (j + 1));
+            drawRectangle(memory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-
+    // Units from cannonical:
+    float playerX = (gameState->playerCoord.tileX * overworld.tileSize) + gameState->playerCoord.offsetX;
+    float playerY = (gameState->playerCoord.tileY * overworld.tileSize) + gameState->playerCoord.offsetY;
+    //playerY = overworld.tileSize * tileMapHeight - playerY + playerHeight / 2.0f; // Invert y to draw 
     // Draw Player
-    drawRectangle(memory, width, height, (float)gameState->playerX - playerWidth / 2.0f, (float)gameState->playerY - playerHeight / 2.0f, gameState->playerX + playerWidth / 2.0f, gameState->playerY + playerHeight / 2.0f, 1.0f, 1.0f, 0.0f);
+    drawRectangle(memory, width, height, unitsToPixels(playerX - playerWidth / 2.0f), unitsToPixels(playerY - playerHeight / 2.0f), 
+        unitsToPixels(playerX + playerWidth / 2.0f), unitsToPixels(playerY + playerHeight / 2.0f), 1.0f, 1.0f, 0.0f);
+
+    //drawRectangle(memory, width, height, 10.0, 10.0,
+    //    20.0, 20.0, 1.0f, 0.0f, 0.0f);
 }

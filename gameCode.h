@@ -46,11 +46,19 @@ struct GameMemory{
     // TODO add append
 };
 
+struct Coordinate {
+    int mapX;
+    int mapY;
+
+    int tileX;
+    int tileY;
+
+    float offsetX;
+    float offsetY;
+};
+
 struct GameState{
-    int currentTileMapX = 0;
-    int currentTileMapY = 0;
-    float playerX;
-    float playerY;
+    Coordinate playerCoord;
 };
 
 struct ButtonState{
