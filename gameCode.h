@@ -47,9 +47,9 @@ struct GameMemory{
 };
 
 
-#define CHUNK_SIZE 256
-#define screenTileWidth 16
-#define screenTileHeight 9
+static const int CHUNK_SIZE = 256;
+static const int SCREEN_TILE_WIDTH = 20;
+static const int SCREEN_TILE_HEIGHT = 9;
 
 struct Chunk {
     uint32_t *tiles;

@@ -64,32 +64,6 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     *waveOffset -= (int)*waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-//struct TileMap {
-//    int* map;
-//};
-//
-//#define WORLD_WIDTH 2
-//#define WORLD_HEIGHT 2
-//struct World {
-//    TileMap* tilemaps;
-//    float tileSize = 1.0;
-//    TileMap* getTileMap(int y, int x) {
-//        if ((y >= 0) && (x >= 0) && (y < WORLD_HEIGHT) && (x < WORLD_WIDTH)) {
-//            return &tilemaps[y * WORLD_WIDTH + x];
-//        }
-//        else {
-//            return nullptr;
-//        }
-//    }
-//};
-
-//int getTileValue(World world, int tileMapY, int tileMapX, int y, int x) {
-//    return world.getTileMap(tileMapY, tileMapX)->map[y * screenTileWidth + x];
-//}
-
-//bool canMove(World world, int tileSetY, int tileSetX, int y, int x) { // Todo pointer instead?
-
-//
 
 const float pixelsPerUnit = 48.0f;
 
@@ -105,6 +79,10 @@ int getTileValue(World *world, AbsoluteCoordinate coord) {
     int chunkY = coord.y >> 24;
     int tileX = coord.x & 0xFF;
     int tileY = coord.y & 0xFF;
+    Assert(chunkX >= 0);
+    Assert(chunkY >= 0);
+    Assert(tileX >= 0);
+    Assert(tileY >= 0);
     return world->chunks[chunkY*world->numChunksY + chunkX].tiles[tileY*CHUNK_SIZE + tileX];
 }
 
@@ -197,8 +175,9 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
     if (!gameMemory->isinitialized){
-        gameState->playerCoord.x = 0x00000005;
-        gameState->playerCoord.y = 0x00000005;
+        int playerX = 24;
+        int playerY = 16;
+        gameState->playerCoord = constructCoordinate(0, 0, playerX, playerY);
         gameState->offsetinTileX = 0.0;
         gameState->offsetinTileY = 0.0;
         gameMemory->isinitialized = true;
@@ -207,15 +186,24 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     //World overworld;
 
     uint32_t tempTiles[CHUNK_SIZE][CHUNK_SIZE] = { // 1 Chunk world
-        {1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,2,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1},
+        {1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,1},
+        {1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
+        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,1},
     };
     Chunk testChunk;
     testChunk.tiles = (uint32_t*) tempTiles;
@@ -224,11 +212,6 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     overworld.chunks = &testChunk;
     overworld.numChunksX = 1;
     overworld.numChunksY = 1;
-
-    AbsoluteCoordinate coord;
-    coord.x = 0x00000001;
-    coord.y = 0x00000001;
-    int value = getTileValue(&overworld, coord);
 
     float playerSpeed = 5.0f;
     float playerWidth = 0.8f;
@@ -248,10 +231,6 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         newOffsetY -= pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
     }
 
-    int newTileCenterX = getTileX(gameState->playerCoord);
-    int newTileCenterY = getTileY(gameState->playerCoord);
-    int newChunkX = getChunkX(gameState->playerCoord);
-    int newChunkY = getChunkY(gameState->playerCoord);
     float offsetLx = newOffsetX - playerWidth / 2.0f;
     float offsetRx = newOffsetX + playerWidth / 2.0f;
     float offsetHeight = newOffsetY - playerHeight / 2.0f;
@@ -267,10 +246,15 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
     drawRectangle(memory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
 
+    float playerX = overworld.tileSize * SCREEN_TILE_WIDTH / 2.0f;
+    float playerY = overworld.tileSize * SCREEN_TILE_HEIGHT / 2.0f;
+    int playerTileX = getTileX(gameState->playerCoord);
+    int playerTileY = getTileY(gameState->playerCoord);
+
     // Draw TileMap
     float grayShadeForTile = 0.5;
-    for (int j = 0; j <= screenTileHeight; j++) {
-        for (int i = 0; i <= screenTileWidth; i++) {
+    for (int j = playerTileY - SCREEN_TILE_HEIGHT/2; j <= playerTileY + SCREEN_TILE_HEIGHT/2; j++) {
+        for (int i = playerTileX - SCREEN_TILE_WIDTH / 2; i <= playerTileX + SCREEN_TILE_WIDTH / 2; i++) {
             AbsoluteCoordinate tileCoord;
             tileCoord.x = i;
             tileCoord.y = j;
@@ -280,22 +264,19 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
             else {
                 grayShadeForTile = 1.0;
             }
-            int playerTileX = getTileX(gameState->playerCoord);
-            int playerTileY = getTileY(gameState->playerCoord);
+
             if ((playerTileX == i) && (playerTileY == j)) {
                 grayShadeForTile = 0.2f;
             }
-            float minX = unitsToPixels(overworld.tileSize * i /* + playerTileX + gameState->offsetinTileX */ );
-            float maxX = unitsToPixels(overworld.tileSize * (i + 1) /* + playerTileX + gameState->offsetinTileX*/);
 
-            float minY = unitsToPixels(overworld.tileSize *j /* + playerTileY + gameState->offsetinTileY*/);
-            float maxY = unitsToPixels(overworld.tileSize * (j + 1) /* + playerTileY + gameState->offsetinTileY*/);
+            float minX = unitsToPixels((float)(overworld.tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0))));
+            float maxX = unitsToPixels((float)(overworld.tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0))));
+
+            float minY = unitsToPixels((float)(overworld.tileSize * (j - gameState->offsetinTileY  - (playerTileY - SCREEN_TILE_HEIGHT / 2.0))));
+            float maxY = unitsToPixels((float)(overworld.tileSize * ((j + 1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0))));
             drawRectangle(memory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-    float playerX = (getTileX(gameState->playerCoord) * overworld.tileSize) + gameState->offsetinTileX;
-    float playerY = (getTileY(gameState->playerCoord) * overworld.tileSize) + gameState->offsetinTileY;
-
 
     // Draw Player
     drawRectangle(memory, width, height, unitsToPixels(playerX - playerWidth / 2.0f), unitsToPixels(playerY - playerHeight / 2.0f), 
