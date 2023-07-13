@@ -46,19 +46,31 @@ struct GameMemory{
     // TODO add append
 };
 
-struct Coordinate {
-    int mapX;
-    int mapY;
 
-    int tileX;
-    int tileY;
+#define CHUNK_SIZE 256
+#define screenTileWidth 16
+#define screenTileHeight 9
 
-    float offsetX;
-    float offsetY;
+struct Chunk {
+    uint32_t *tiles;
+};
+
+struct World {
+    uint32_t numChunksX = 1;
+    uint32_t numChunksY = 1;
+    Chunk* chunks;
+    float tileSize = 1.0;
+};
+
+struct AbsoluteCoordinate {
+    uint32_t x; // 24 bits for chunk index, 8 for tile index
+    uint32_t y; // ...
 };
 
 struct GameState{
-    Coordinate playerCoord;
+    AbsoluteCoordinate playerCoord;
+    float offsetinTileX;
+    float offsetinTileY;
 };
 
 struct ButtonState{
