@@ -291,13 +291,8 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     case WM_CLOSE:
     {
         // TODO: Stop audio smoothly
-        HRESULT messageBoxSucceded = MessageBox(windowHandle, "Sure you want to exit?", "Jodot - Exiting", MB_YESNO);
-        if (messageBoxSucceded == IDYES)
-        {
-            gameRunning = false;
-
-            DestroyWindow(windowHandle);
-        };
+        gameRunning = false;
+        DestroyWindow(windowHandle);
     }
     break;
     case WM_DESTROY:

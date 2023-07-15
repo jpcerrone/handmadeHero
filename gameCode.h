@@ -3,6 +3,7 @@
 #define GAMECODE_API __declspec(dllexport)
 
 #include <cinttypes>
+#include "world.h"
 
 #ifdef DEV_BUILD
 #define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
@@ -44,27 +45,6 @@ struct GameMemory{
     writeFile_t *writeFile;
     freeFileMemory_t *freeFileMemory;
     // TODO add append
-};
-
-
-static const int CHUNK_SIZE = 256;
-static const int SCREEN_TILE_WIDTH = 20;
-static const int SCREEN_TILE_HEIGHT = 9;
-
-struct Chunk {
-    uint32_t *tiles;
-};
-
-struct World {
-    uint32_t numChunksX = 1;
-    uint32_t numChunksY = 1;
-    Chunk* chunks;
-    float tileSize = 1.0;
-};
-
-struct AbsoluteCoordinate {
-    uint32_t x; // 24 bits for chunk index, 8 for tile index
-    uint32_t y; // ...
 };
 
 struct GameState{

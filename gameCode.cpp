@@ -2,6 +2,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <iostream>
+#include "world.cpp"
 
 int roundFloat(float value) {
     return (int)(value + 0.5f);
@@ -64,155 +65,67 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     *waveOffset -= (int)*waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
-
-const float pixelsPerUnit = 48.0f;
-
-float pixelsToUnits(float pixelMagnitude) {
-    return (float)pixelMagnitude / pixelsPerUnit;
-}
-float unitsToPixels(float unitMagnitude) {
-    return unitMagnitude * pixelsPerUnit;
-}
-
-int getTileValue(World *world, AbsoluteCoordinate coord) {
-    int chunkX = coord.x >> 24;
-    int chunkY = coord.y >> 24;
-    int tileX = coord.x & 0xFF;
-    int tileY = coord.y & 0xFF;
-    Assert(chunkX >= 0);
-    Assert(chunkY >= 0);
-    Assert(tileX >= 0);
-    Assert(tileY >= 0);
-    return world->chunks[chunkY*world->numChunksY + chunkX].tiles[tileY*CHUNK_SIZE + tileX];
-}
-
-int getTileX(AbsoluteCoordinate coord) {
-    int tileX = coord.x & 0xFF;
-    return tileX;
-}
-
-int getTileY(AbsoluteCoordinate coord) {
-    int tileY = coord.y & 0xFF;
-    return tileY;
-}
-
-int getChunkX(AbsoluteCoordinate coord) {
-    int chunkX = coord.x >> 24;    
-    return chunkX;
-}
-
-int getChunkY(AbsoluteCoordinate coord) {
-    int chunkY = coord.y >> 24;    
-    return chunkY;
-}
-
-AbsoluteCoordinate constructCoordinate(int chunkX, int chunkY, int tileX, int tileY) {
-    Assert(chunkX <= 0xFFFFFF00); // TODO: Topology do that thing
-    Assert(chunkY <= 0xFFFFFF00);
-    Assert(tileX <= 0xFF);
-    Assert(tileY <= 0xFF);
-
-    AbsoluteCoordinate ret;
-
-    ret.x = (chunkX << 24) | (tileX);
-    ret.y = (chunkY << 24) | (tileY);
-
-    return ret;
-}
-
-bool canMove(World *world, AbsoluteCoordinate coord) {
-    return getTileValue(world, coord) == 0;
-}
-
-
-AbsoluteCoordinate canonicalize(World *world, AbsoluteCoordinate *coord, float *offsetX, float *offsetY) {
-    int tileX = getTileX(*coord);
-    int tileY = getTileY(*coord);
-    int chunkX = getChunkX(*coord);
-    int chunkY = getChunkY(*coord);
-
-    // Offset
-    if (*offsetX > world->tileSize) {
-        *offsetX -= world->tileSize;
-        tileX += 1;
-    }
-    if (*offsetX < 0) {
-        *offsetX += world->tileSize;
-        tileX -= 1;
-    }
-    if (*offsetY > world->tileSize) {
-        *offsetY -= world->tileSize;
-        tileY += 1;
-    }
-    if (*offsetY < 0) {
-        *offsetY += world->tileSize;
-        tileY -= 1;
-    }
-
-    // Chunk
-    if (tileX >= CHUNK_SIZE) {
-        tileX = 0;
-        chunkX += 1;
-    }
-    if (tileX < 0) {
-        tileX = CHUNK_SIZE - 1;
-        chunkX -= 1;
-    }
-    if (tileY >= CHUNK_SIZE) {
-        tileY = 0;
-        chunkY += 1;
-    }
-    if (tileY < 0) {
-        tileY = CHUNK_SIZE - 1;
-        chunkY -= 1;
-    }
-    return constructCoordinate(chunkX, chunkY, tileX, tileY);
-}
-
-
 extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 {
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
-    if (!gameMemory->isinitialized){
-        int playerX = 24;
-        int playerY = 16;
-        gameState->playerCoord = constructCoordinate(0, 0, playerX, playerY);
+
+
+    const int chunkSize = 4;
+    uint32_t tempTiles[chunkSize][chunkSize] = { 
+        {0,0,0,0},
+        {0,1,0,0},
+        {0,0,0,0},
+        {0,0,0,0},
+    };
+    uint32_t tempTiles1[chunkSize][chunkSize] = {
+        {0,0,0,0},
+        {0,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0},
+    };
+    uint32_t tempTiles2[chunkSize][chunkSize] = {
+        {0,0,0,1},
+        {0,1,1,0},
+        {0,1,0,0},
+        {0,0,0,0},
+    };
+    uint32_t tempTiles3[chunkSize][chunkSize] = {
+        {0,0,0,0},
+        {0,1,1,0},
+        {0,1,1,0},
+        {0,0,0,0},
+    };
+
+    // 4 Chunk world
+    Chunk testChunk;
+    testChunk.tiles = (uint32_t*) tempTiles;
+    Chunk testChunk1;
+    testChunk1.tiles = (uint32_t*)tempTiles1;
+    Chunk testChunk2;
+    testChunk2.tiles = (uint32_t*)tempTiles2;
+    Chunk testChunk3;
+    testChunk3.tiles = (uint32_t*)tempTiles3;
+
+    World overworld;
+    overworld.numChunksX = 2;
+    overworld.numChunksY = 2;
+    overworld.bitsForTiles = 2; // 2**4 = 16
+    Chunk chunks[2][2];
+    chunks[0][0] = testChunk;
+    chunks[0][1] = testChunk1;
+    chunks[1][0] = testChunk2;
+    chunks[1][1] = testChunk3;
+    overworld.chunks = (Chunk*)chunks;
+
+    if (!gameMemory->isinitialized) {
+        int playerX = 1;
+        int playerY = 2;
+        gameState->playerCoord = constructCoordinate(&overworld, 0, 0, playerX, playerY);
         gameState->offsetinTileX = 0.0;
         gameState->offsetinTileY = 0.0;
         gameMemory->isinitialized = true;
     }
-
-    //World overworld;
-
-    uint32_t tempTiles[CHUNK_SIZE][CHUNK_SIZE] = { // 1 Chunk world
-        {1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,1},
-        {1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,1,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,1,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,1,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,0},
-        {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,1},
-    };
-    Chunk testChunk;
-    testChunk.tiles = (uint32_t*) tempTiles;
-
-    World overworld;
-    overworld.chunks = &testChunk;
-    overworld.numChunksX = 1;
-    overworld.numChunksY = 1;
-
     float playerSpeed = 5.0f;
     float playerWidth = 0.8f;
     float playerHeight = 1;
@@ -248,16 +161,15 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
     float playerX = overworld.tileSize * SCREEN_TILE_WIDTH / 2.0f;
     float playerY = overworld.tileSize * SCREEN_TILE_HEIGHT / 2.0f;
-    int playerTileX = getTileX(gameState->playerCoord);
-    int playerTileY = getTileY(gameState->playerCoord);
+    int playerTileX = getTileX(&overworld, gameState->playerCoord);
+    int playerTileY = getTileY(&overworld, gameState->playerCoord);
 
     // Draw TileMap
     float grayShadeForTile = 0.5;
-    for (int j = playerTileY - SCREEN_TILE_HEIGHT/2; j <= playerTileY + SCREEN_TILE_HEIGHT/2; j++) {
-        for (int i = playerTileX - SCREEN_TILE_WIDTH / 2; i <= playerTileX + SCREEN_TILE_WIDTH / 2; i++) {
+    for (int j = playerTileY - SCREEN_TILE_HEIGHT/2 - 1; j <= playerTileY + SCREEN_TILE_HEIGHT/2; j++) { // -1 to account for offsetY
+        for (int i = playerTileX - SCREEN_TILE_WIDTH / 2 - 1; i <= playerTileX + SCREEN_TILE_WIDTH / 2; i++) { // -1 to account for offsetX
             AbsoluteCoordinate tileCoord;
-            tileCoord.x = i;
-            tileCoord.y = j;
+            tileCoord = constructCoordinate(&overworld, getChunkX(&overworld, gameState->playerCoord), getChunkY(&overworld, gameState->playerCoord), i, j);
             if (getTileValue(&overworld, tileCoord) == 0) {
                 grayShadeForTile = 0.5;
             }
@@ -269,16 +181,16 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                 grayShadeForTile = 0.2f;
             }
 
-            float minX = unitsToPixels((float)(overworld.tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0))));
-            float maxX = unitsToPixels((float)(overworld.tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0))));
+            float minX = unitsToPixels((float)(overworld.tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
+            float maxX = unitsToPixels((float)(overworld.tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
 
-            float minY = unitsToPixels((float)(overworld.tileSize * (j - gameState->offsetinTileY  - (playerTileY - SCREEN_TILE_HEIGHT / 2.0))));
-            float maxY = unitsToPixels((float)(overworld.tileSize * ((j + 1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0))));
+            float minY = unitsToPixels((float)(overworld.tileSize * (j - gameState->offsetinTileY -(playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
+            float maxY = unitsToPixels((float)(overworld.tileSize * ((j +1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
             drawRectangle(memory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-
+    float tileCenterX = overworld.tileSize - playerWidth;
     // Draw Player
-    drawRectangle(memory, width, height, unitsToPixels(playerX - playerWidth / 2.0f), unitsToPixels(playerY - playerHeight / 2.0f), 
-        unitsToPixels(playerX + playerWidth / 2.0f), unitsToPixels(playerY + playerHeight / 2.0f), 1.0f, 1.0f, 0.0f);
+    drawRectangle(memory, width, height, unitsToPixels(playerX + tileCenterX/2.0f), unitsToPixels(playerY),
+        unitsToPixels(playerX + tileCenterX/2.0f + playerWidth), unitsToPixels(playerY + playerHeight), 1.0f, 1.0f, 0.0f);
 }
