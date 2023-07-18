@@ -1,4 +1,5 @@
 #include "world.h"
+#include "memory_arena.cpp"
 
 float pixelsToUnits(float pixelMagnitude) {
     return (float)pixelMagnitude / PIXELS_PER_UNIT;
@@ -23,9 +24,45 @@ int getTileValue(World* world, AbsoluteCoordinate coord) {
     int tileY = coord.y & ((1 << world->bitsForTiles) - 1);
     Assert(chunkX >= 0);
     Assert(chunkY >= 0);
+    Assert(coord.z >= 0);
+    Assert(coord.z < (int)world->numChunksZ);
     Assert(tileX >= 0);
     Assert(tileY >= 0);
-    return world->chunks[chunkY * world->numChunksY + chunkX].tiles[tileY * getChunkSize(world) + tileX];
+    if (world->chunks[coord.z * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX].tiles != nullptr) {
+        return world->chunks[coord.z * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX].tiles[tileY * getChunkSize(world) + tileX];
+    }
+    else {
+        return 0;
+    }
+}
+
+void setTileValue(MemoryArena* worldArena, World* world, int absoluteX, int absoluteY, int chunkZ, int value) {
+    uint32_t chunkX = 0;
+    uint32_t chunkY = 0;
+    while (absoluteX >= world->tilesPerChunk) {
+        absoluteX -= world->tilesPerChunk;
+        chunkX += 1;
+    }
+    while (absoluteY >= world->tilesPerChunk) {
+        absoluteY -= world->tilesPerChunk;
+        chunkY += 1;
+    }
+    while (chunkX >= world->numChunksX) {
+        chunkX -= world->numChunksX;
+    }
+    while (chunkY >= world->numChunksY) {
+        chunkY -= world->numChunksY;
+    }
+    Assert(chunkZ < (int)world->numChunksZ);
+
+    Chunk* currentChunk = &world->chunks[chunkZ * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX];
+
+    if (currentChunk->tiles == nullptr) {
+        uint32_t* tiles = pushArray(worldArena, world->tilesPerChunk * world->tilesPerChunk, uint32_t);
+        currentChunk->tiles = tiles;
+    }
+
+    currentChunk->tiles[absoluteY * world->tilesPerChunk + absoluteX] = value;
 }
 
 int getTileX(World* world, AbsoluteCoordinate coord) {
@@ -48,7 +85,7 @@ int getChunkY(World* world, AbsoluteCoordinate coord) {
     return chunkY;
 }
 
-AbsoluteCoordinate constructCoordinate(World* world, int chunkX, int chunkY, int tileX, int tileY) {
+AbsoluteCoordinate constructCoordinate(World* world, int chunkX, int chunkY, int chunkZ, int tileX, int tileY) {
     while (tileX >= getChunkSize(world)) {
         tileX -= getChunkSize(world);
         chunkX += 1;
@@ -81,12 +118,12 @@ AbsoluteCoordinate constructCoordinate(World* world, int chunkX, int chunkY, int
 
     ret.x = (chunkX << (world->bitsForTiles)) | (tileX);
     ret.y = (chunkY << (world->bitsForTiles)) | (tileY);
-
+    ret.z = chunkZ;
     return ret;
 }
 
 bool canMove(World* world, AbsoluteCoordinate coord) {
-    return getTileValue(world, coord) == 0;
+    return getTileValue(world, coord) != 0;
 }
 
 
@@ -95,7 +132,7 @@ AbsoluteCoordinate canonicalize(World* world, AbsoluteCoordinate* coord, float* 
     int tileY = getTileY(world, *coord);
     int chunkX = getChunkX(world, *coord);
     int chunkY = getChunkY(world, *coord);
-
+    int chunkZ = coord->z;
     // Offset
     // TODO: this prob wont work for very large values, will need to do a while loop
     if (*offsetX > world->tileSize / 2.0f) {
@@ -132,5 +169,5 @@ AbsoluteCoordinate canonicalize(World* world, AbsoluteCoordinate* coord, float* 
         tileY = getChunkSize(world) - 1;
         chunkY -= 1;
     }
-    return constructCoordinate(world, chunkX, chunkY, tileX, tileY);
+    return constructCoordinate(world, chunkX, chunkY, chunkZ, tileX, tileY);
 }

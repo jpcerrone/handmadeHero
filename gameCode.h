@@ -4,7 +4,7 @@
 
 #include <cinttypes>
 #include "world.h"
-
+#include "memory_arena.h"
 #ifdef DEV_BUILD
 #define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
 #else
@@ -51,6 +51,9 @@ struct GameState{
     AbsoluteCoordinate playerCoord;
     float offsetinTileX;
     float offsetinTileY;
+
+    MemoryArena worldArena;
+    World* world;
 };
 
 struct ButtonState{

@@ -3,6 +3,7 @@
 #include <math.h>
 #include <iostream>
 #include "world.cpp"
+#include "memory_arena.cpp"
 
 int roundFloat(float value) {
     return (int)(value + 0.5f);
@@ -65,67 +66,127 @@ void loadSineWave(uint32_t framesToWrite, void *bufferLocation, int samplesPerSe
     *waveOffset -= (int)*waveOffset; // Keep it between 0 and 1 to avoid overflow.
 }
 
+void initWorldArena(MemoryArena* worldArena, uint8_t *basePointer, size_t totalSize) {
+    worldArena->base = basePointer;
+    worldArena->total = totalSize;
+    worldArena->used = 0;
+}
+
 extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 {
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
 
-
-    const int chunkSize = 4;
-    uint32_t tempTiles[chunkSize][chunkSize] = { 
-        {0,0,0,0},
-        {0,1,0,0},
-        {0,0,0,0},
-        {0,0,0,0},
-    };
-    uint32_t tempTiles1[chunkSize][chunkSize] = {
-        {0,0,0,0},
-        {0,1,1,0},
-        {0,0,0,0},
-        {0,0,0,0},
-    };
-    uint32_t tempTiles2[chunkSize][chunkSize] = {
-        {0,0,0,1},
-        {0,1,1,0},
-        {0,1,0,0},
-        {0,0,0,0},
-    };
-    uint32_t tempTiles3[chunkSize][chunkSize] = {
-        {0,0,0,0},
-        {0,1,1,0},
-        {0,1,1,0},
-        {0,0,0,0},
-    };
-
-    // 4 Chunk world
-    Chunk testChunk;
-    testChunk.tiles = (uint32_t*) tempTiles;
-    Chunk testChunk1;
-    testChunk1.tiles = (uint32_t*)tempTiles1;
-    Chunk testChunk2;
-    testChunk2.tiles = (uint32_t*)tempTiles2;
-    Chunk testChunk3;
-    testChunk3.tiles = (uint32_t*)tempTiles3;
-
-    World overworld;
-    overworld.numChunksX = 2;
-    overworld.numChunksY = 2;
-    overworld.bitsForTiles = 2; // 2**4 = 16
-    Chunk chunks[2][2];
-    chunks[0][0] = testChunk;
-    chunks[0][1] = testChunk1;
-    chunks[1][0] = testChunk2;
-    chunks[1][1] = testChunk3;
-    overworld.chunks = (Chunk*)chunks;
-
     if (!gameMemory->isinitialized) {
+        // Construct world
+        initWorldArena(&gameState->worldArena, (uint8_t*)gameMemory->permanentStorage + sizeof(GameState),
+            (size_t)(gameMemory->permanentStorageSize - sizeof(GameState)));
+        
+        gameState->world = pushStruct(&gameState->worldArena, World);
+
+        gameState->world->numChunksX = 256;
+        gameState->world->numChunksY = 256;
+        gameState->world->numChunksZ = 8;
+        gameState->world->bitsForTiles = 2; // 2**4 = 16
+        gameState->world->tileSize = 1.0f;
+        gameState->world->tilesPerChunk = 4;
+
+        gameState->world->chunks = pushArray(&gameState->worldArena, 
+            gameState->world->numChunksX * gameState->world->numChunksY * gameState->world->numChunksZ, Chunk);
+
+        int randomNumbers[10] = { 5, 6, 15, 18, 20, 3, 6, 8, 16, 19 };
+
+        int randomNumberIdx = 0;
+        int screenOffsetX = 0;
+        int screenOffsetY = 0;
+
+        bool doorLeft = false;
+        bool doorRight = false;
+        bool doorUp = false;
+        bool doorDown = false;
+        const int SCREENS_TO_GENERATE = 15;
+
+        for (int s = 0; s < SCREENS_TO_GENERATE; s++) {
+            // Get random next room and stairs
+            int randomNumber = randomNumbers[randomNumberIdx];
+            int nextOffsetX = screenOffsetX;
+            int nextOffsetY = screenOffsetY;
+            if ((randomNumber % 2) == 1) {
+                doorRight = true;
+                nextOffsetX += 1;
+            }
+            else {
+                doorUp = true;
+                nextOffsetY += 1;
+            }
+            randomNumberIdx = (randomNumberIdx + 1) % 10;
+            int randomStairs = randomNumbers[(randomNumberIdx + 1) % 10] % 2;
+            int stairsPosX = 5;
+            int stairsPosY = 7;
+            int zScreensToWrite = 1;
+            if (randomStairs) {
+                zScreensToWrite = 2;
+            }
+            for (int zScreen = 0; zScreen < zScreensToWrite; zScreen++) {
+                for (int j = 0; j < SCREEN_TILE_HEIGHT; j++) {
+                    for (int i = 0; i < SCREEN_TILE_WIDTH; i++) {
+                        int valueToWrite = 1;
+                        if (j == 0) {
+                            if (!(i == SCREEN_TILE_WIDTH / 2 && doorDown)) {
+                                valueToWrite = 2;
+                            }
+                        }
+                        else if (j == SCREEN_TILE_HEIGHT - 1) {
+                            if (!(i == SCREEN_TILE_WIDTH / 2 && doorUp)) {
+                                valueToWrite = 2;
+                            }
+                        }
+                        else if (i == 0) {
+                            if (!(j == SCREEN_TILE_HEIGHT / 2 && doorLeft)) {
+                                valueToWrite = 2;
+                            }
+                        }
+                        else if (i == SCREEN_TILE_WIDTH - 1) {
+                            if (!(j == SCREEN_TILE_HEIGHT / 2 && doorRight)) {
+                                valueToWrite = 2;
+                            }
+                        }
+                        setTileValue(&gameState->worldArena, gameState->world, i + screenOffsetX * SCREEN_TILE_WIDTH, j + screenOffsetY * SCREEN_TILE_HEIGHT, zScreen, valueToWrite);
+
+                    }
+                }
+                if (randomStairs){
+                    if (zScreen == 0) {
+                        setTileValue(&gameState->worldArena, gameState->world, stairsPosX + screenOffsetX * SCREEN_TILE_WIDTH, stairsPosY + screenOffsetY * SCREEN_TILE_HEIGHT, zScreen, 3); //Up
+                    }
+                    else {
+                        setTileValue(&gameState->worldArena, gameState->world, stairsPosX + screenOffsetX * SCREEN_TILE_WIDTH, stairsPosY + screenOffsetY * SCREEN_TILE_HEIGHT, zScreen, 4); //Down
+                    }
+                }
+            }
+
+
+            doorLeft = doorRight;
+            doorDown = doorUp;
+            doorRight = false;
+            doorUp = false;
+            screenOffsetX = nextOffsetX;
+            screenOffsetY = nextOffsetY;
+        }
+
+        
+        // Player
         int playerX = 1;
         int playerY = 2;
-        gameState->playerCoord = constructCoordinate(&overworld, 0, 0, playerX, playerY);
+        int playerZ = 0;
+        gameState->playerCoord = constructCoordinate(gameState->world, 0, 0, playerZ, playerX, playerY);
         gameState->offsetinTileX = 0.0;
         gameState->offsetinTileY = 0.0;
         gameMemory->isinitialized = true;
+
     }
+    World *overworld = gameState->world;
+
     float playerSpeed = 5.0f;
     float playerWidth = 0.8f;
     float playerHeight = 1;
@@ -148,10 +209,18 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     float offsetRx = newOffsetX + playerWidth / 2.0f;
     float offsetHeight = newOffsetY - playerHeight / 2.0f;
     float offsetHeight2 = newOffsetY - playerHeight / 2.0f;
-    AbsoluteCoordinate middle = canonicalize(&overworld, &gameState->playerCoord, &newOffsetX, &newOffsetY);
-    AbsoluteCoordinate left = canonicalize(&overworld, &gameState->playerCoord, &offsetLx, &offsetHeight);
-    AbsoluteCoordinate right = canonicalize(&overworld, &gameState->playerCoord, &offsetRx, &offsetHeight2);
-    if (canMove(&overworld, middle) && canMove(&overworld, left) && canMove(&overworld, right)) {
+    AbsoluteCoordinate middle = canonicalize(overworld, &gameState->playerCoord, &newOffsetX, &newOffsetY);
+    AbsoluteCoordinate left = canonicalize(overworld, &gameState->playerCoord, &offsetLx, &offsetHeight);
+    AbsoluteCoordinate right = canonicalize(overworld, &gameState->playerCoord, &offsetRx, &offsetHeight2);
+    if (canMove(overworld, middle) && canMove(overworld, left) && canMove(overworld, right)) {
+        if (gameState->playerCoord != middle) {
+            if (getTileValue(overworld, middle) == 3) {
+                middle.z = 1;
+            }
+            else if (getTileValue(overworld, middle) == 4) {
+                middle.z = 0;
+            }
+        }
         gameState->playerCoord = middle;
         gameState->offsetinTileX = newOffsetX;
         gameState->offsetinTileY = newOffsetY;
@@ -159,37 +228,49 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
     drawRectangle(memory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
 
-    float playerX = overworld.tileSize * SCREEN_TILE_WIDTH / 2.0f;
-    float playerY = overworld.tileSize * SCREEN_TILE_HEIGHT / 2.0f;
-    int playerTileX = getTileX(&overworld, gameState->playerCoord);
-    int playerTileY = getTileY(&overworld, gameState->playerCoord);
+    float playerX = overworld->tileSize * SCREEN_TILE_WIDTH / 2.0f;
+    float playerY = overworld->tileSize * SCREEN_TILE_HEIGHT / 2.0f;
+    int playerTileX = getTileX(overworld, gameState->playerCoord);
+    int playerTileY = getTileY(overworld, gameState->playerCoord);
 
     // Draw TileMap
     float grayShadeForTile = 0.5;
-    for (int j = playerTileY - SCREEN_TILE_HEIGHT/2 - 1; j <= playerTileY + SCREEN_TILE_HEIGHT/2; j++) { // -1 to account for offsetY
-        for (int i = playerTileX - SCREEN_TILE_WIDTH / 2 - 1; i <= playerTileX + SCREEN_TILE_WIDTH / 2; i++) { // -1 to account for offsetX
+    const int DEBUG_ZOOMED_X = SCREEN_TILE_WIDTH * 6;
+    const int DEBUG_ZOOMED_Y = SCREEN_TILE_HEIGHT * 6;
+
+    for (int j = playerTileY - DEBUG_ZOOMED_Y /2 - 1; j <= playerTileY + DEBUG_ZOOMED_Y /2; j++) { // -1 to account for offsetY
+        for (int i = playerTileX - DEBUG_ZOOMED_X / 2 - 1; i <= playerTileX + DEBUG_ZOOMED_X / 2; i++) { // -1 to account for offsetX
             AbsoluteCoordinate tileCoord;
-            tileCoord = constructCoordinate(&overworld, getChunkX(&overworld, gameState->playerCoord), getChunkY(&overworld, gameState->playerCoord), i, j);
-            if (getTileValue(&overworld, tileCoord) == 0) {
+            tileCoord = constructCoordinate(overworld, getChunkX(overworld, gameState->playerCoord), getChunkY(overworld, gameState->playerCoord), gameState->playerCoord.z,i, j);
+            if (getTileValue(overworld, tileCoord) == 1) {
                 grayShadeForTile = 0.5;
             }
-            else {
+            else if (getTileValue(overworld, tileCoord) == 2) {
                 grayShadeForTile = 1.0;
+            }
+            else if (getTileValue(overworld, tileCoord) == 3) {
+                grayShadeForTile = 0.8f;
+            }
+            else if (getTileValue(overworld, tileCoord) == 4) {
+                grayShadeForTile = 0.6f;
+            }
+            else {
+                grayShadeForTile = 0.1f;
             }
 
             if ((playerTileX == i) && (playerTileY == j)) {
                 grayShadeForTile = 0.2f;
             }
 
-            float minX = unitsToPixels((float)(overworld.tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
-            float maxX = unitsToPixels((float)(overworld.tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
+            float minX = unitsToPixels((float)(overworld->tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
+            float maxX = unitsToPixels((float)(overworld->tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
 
-            float minY = unitsToPixels((float)(overworld.tileSize * (j - gameState->offsetinTileY -(playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
-            float maxY = unitsToPixels((float)(overworld.tileSize * ((j +1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
+            float minY = unitsToPixels((float)(overworld->tileSize * (j - gameState->offsetinTileY -(playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
+            float maxY = unitsToPixels((float)(overworld->tileSize * ((j +1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
             drawRectangle(memory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-    float tileCenterX = overworld.tileSize - playerWidth;
+    float tileCenterX = overworld->tileSize - playerWidth;
     // Draw Player
     drawRectangle(memory, width, height, unitsToPixels(playerX + tileCenterX/2.0f), unitsToPixels(playerY),
         unitsToPixels(playerX + tileCenterX/2.0f + playerWidth), unitsToPixels(playerY + playerHeight), 1.0f, 1.0f, 0.0f);
