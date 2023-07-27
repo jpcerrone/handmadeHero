@@ -18,6 +18,8 @@
 #define REFTIMES_PER_SEC 10'000'000 // 100 nanoscend units, 1 seconds
 #define REFTIMES_PER_MILLISEC 10'000 
 
+static HCURSOR cursor;
+WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
 static int desiredFPS = 60;
 static bool gameRunning;
@@ -138,12 +140,19 @@ void updateWindow(HDC deviceContext, int srcWidth, int srcHeight, int windowWidt
 {
     static int offsetX = 0;
     static int offsetY = 0;
-    // For now we ignore the size of the window to get 1:1 pixel rendering
-    PatBlt(deviceContext, 0, 0, srcWidth, offsetY, BLACKNESS);
-    PatBlt(deviceContext, 0, 0, offsetX, srcHeight, BLACKNESS);
-    PatBlt(deviceContext, srcWidth, 0, windowWidth, windowHeight, BLACKNESS);
-    PatBlt(deviceContext, 0, srcHeight, windowWidth, windowHeight, BLACKNESS);
-    StretchDIBits(deviceContext, offsetX, offsetY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+
+    if ((windowWidth >= 2* srcWidth) && (windowHeight >= 2* srcHeight)) {
+        StretchDIBits(deviceContext, offsetX, offsetY, windowWidth, windowHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+
+    }
+    else {
+        // For now we ignore the size of the window to get 1:1 pixel rendering
+        PatBlt(deviceContext, 0, 0, srcWidth, offsetY, BLACKNESS);
+        PatBlt(deviceContext, 0, 0, offsetX, srcHeight, BLACKNESS);
+        PatBlt(deviceContext, srcWidth, 0, windowWidth, windowHeight, BLACKNESS);
+        PatBlt(deviceContext, 0, srcHeight, windowWidth, windowHeight, BLACKNESS);
+        StretchDIBits(deviceContext, offsetX, offsetY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight, bitMapMemory, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    }
 }
 
 Dimension getWindowDimension(HWND windowHandle)
@@ -275,6 +284,13 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
     LRESULT returnVal = 0;
     switch (uMsg)
     {
+    case WM_SETCURSOR: {
+#if DEV_BUILD
+        SetCursor(cursor);
+#else
+        SetCursor(0);
+#endif
+    } break;
     case WM_SYSKEYDOWN:
     case WM_SYSKEYUP:
     case WM_KEYUP:
@@ -433,6 +449,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance ? hInstance : GetModuleHandle(nullptr);
     wc.lpszClassName = "Engine";
 
+    cursor = LoadCursor(0, IDC_ARROW);
+    wc.hCursor = cursor;// class cursor 
     MMRESULT canQueryEveryMs = timeBeginPeriod(1); // TODO: maybe call timeEndPeriod?
     Assert(canQueryEveryMs == TIMERR_NOERROR);
 
@@ -584,6 +602,35 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         {
                             gameRunning = false;
                         }
+                        if (message.wParam == VK_RETURN && isAltDown)
+                        {
+                            // Code taken from https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+                            DWORD dwStyle = GetWindowLong(windowHandle, GWL_STYLE);
+                            if (dwStyle & WS_OVERLAPPEDWINDOW) {
+                                MONITORINFO mi = { sizeof(mi) };
+                                if (GetWindowPlacement(windowHandle, &g_wpPrev) &&
+                                    GetMonitorInfo(MonitorFromWindow(windowHandle,
+                                        MONITOR_DEFAULTTOPRIMARY), &mi)) {
+                                    SetWindowLong(windowHandle, GWL_STYLE,
+                                        dwStyle & ~WS_OVERLAPPEDWINDOW);
+                                    SetWindowPos(windowHandle, HWND_TOP,
+                                        mi.rcMonitor.left, mi.rcMonitor.top,
+                                        mi.rcMonitor.right - mi.rcMonitor.left,
+                                        mi.rcMonitor.bottom - mi.rcMonitor.top,
+                                        SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                                }
+                            }
+                            else {
+                                SetWindowLong(windowHandle, GWL_STYLE,
+                                    dwStyle | WS_OVERLAPPEDWINDOW);
+                                SetWindowPlacement(windowHandle, &g_wpPrev);
+                                SetWindowPos(windowHandle, NULL, 0, 0, 0, 0,
+                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                    SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                            }
+                        }
+
+
                     }
                     break;
                     case WM_SYSKEYUP:
