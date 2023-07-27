@@ -21,7 +21,7 @@
 
 static int desiredFPS = 60;
 static bool gameRunning;
-struct Bitmap
+struct ScreenBitmap
 {
     void *memory;
     BITMAPINFO info;
@@ -29,7 +29,7 @@ struct Bitmap
 };
 
 static Dimension clientWindowDimensions;
-static Bitmap globalBitmap;
+static ScreenBitmap globalBitmap;
 
 // Define a function pointer with the XInputGetState signature
 typedef DWORD(WINAPI *XInputGetState_t)(DWORD dwUserIndex, XINPUT_STATE *pState);
@@ -375,6 +375,7 @@ APPEND_TO_FILE(appendToFile) {
 READ_FILE(readFile)
 {
     HANDLE fileHandle = CreateFile(path, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    //DWORD error = GetLastError();
     FileReadResult result = {};
     if (fileHandle)
     {

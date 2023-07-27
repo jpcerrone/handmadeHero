@@ -47,13 +47,27 @@ struct GameMemory{
     // TODO add append
 };
 
+struct Bitmap {
+    uint32_t *startPixelPointer;
+    int width;
+    int height;
+    int offsetX;
+    int offsetY;
+};
+
 struct GameState{
     AbsoluteCoordinate playerCoord;
     float offsetinTileX;
     float offsetinTileY;
+    int orientation; // 0 back 1 front 2 left 3 right
 
     MemoryArena worldArena;
     World* world;
+
+    Bitmap background;
+    Bitmap guyHead[4];
+    Bitmap guyCape[4];
+    Bitmap guyTorso[4];
 };
 
 struct ButtonState{
@@ -91,7 +105,7 @@ struct GameInputState{
     };
 };
 
-#define UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* memory, int width, int height, GameInputState inputState)
+#define UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* bitmapMemory, int width, int height, GameInputState inputState)
 typedef UPDATE_AND_RENDER(updateAndRender_t);
 
 // TODO: handle multiple controllers:

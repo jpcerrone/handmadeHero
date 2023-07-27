@@ -4,6 +4,7 @@
 #include <iostream>
 #include "world.cpp"
 #include "memory_arena.cpp"
+#include "instrinsics.h"
 
 int roundFloat(float value) {
     return (int)(value + 0.5f);
@@ -72,12 +73,168 @@ void initWorldArena(MemoryArena* worldArena, uint8_t *basePointer, size_t totalS
     worldArena->used = 0;
 }
 
+#pragma pack(push, 1)
+struct BitmapHeader {
+    uint16_t FileType;
+    uint32_t FileSize;
+    uint16_t Reserved1;
+    uint16_t Reserved2;
+    uint32_t BitmapOffset;
+    uint32_t Size;            /* Size of this header in bytes */
+    int32_t  Width;           /* Image width in pixels */
+    int32_t  Height;          /* Image height in pixels */
+    uint16_t  Planes;          /* Number of color planes */
+    uint16_t  BitsPerPixel;    /* Number of bits per pixel */
+    uint32_t Compression;     /* Compression methods used */
+    uint32_t SizeOfBitmap;    /* Size of bitmap in bytes */
+    int32_t  HorzResolution;  /* Horizontal resolution in pixels per meter */
+    int32_t  VertResolution;  /* Vertical resolution in pixels per meter */
+    uint32_t ColorsUsed;      /* Number of colors in the image */
+    uint32_t ColorsImportant; /* Minimum number of important colors */
+    /* Fields added for Windows 4.x follow this line */
+
+    uint32_t RedMask;       /* Mask identifying bits of red component */
+    uint32_t GreenMask;     /* Mask identifying bits of green component */
+    uint32_t BlueMask;      /* Mask identifying bits of blue component */
+    uint32_t AlphaMask;     /* Mask identifying bits of alpha component */
+};
+#pragma pack(pop)
+
+Bitmap loadBMP(char* path, readFile_t* readFunction, ThreadContext *thread) {
+    FileReadResult result = readFunction(thread, path);
+    Bitmap retBitmap = {};
+    BitmapHeader *header = (BitmapHeader*)(result.memory);
+
+    Assert(header->Compression == 3);
+
+    retBitmap.startPixelPointer = (uint32_t*)((uint8_t*)result.memory + header->BitmapOffset);
+    retBitmap.width = header->Width;
+    retBitmap.height = header->Height;
+
+    // Modify loaded bmp to set its pixels in the right order. Our pixel format is AARRGGBB, but bmps may vary because of their masks.
+    int redOffset = findFirstSignificantBit(header->RedMask);
+    int greenOffset = findFirstSignificantBit(header->GreenMask);
+    int blueOffset = findFirstSignificantBit(header->BlueMask);
+    int alphaOffset = findFirstSignificantBit(header->AlphaMask);
+
+    uint32_t *modifyingPixelPointer = retBitmap.startPixelPointer;
+    for (int j = 0; j < header->Height; j++) {
+        for (int i = 0; i < header->Width; i++) {
+            int newRedValue = ((*modifyingPixelPointer & header->RedMask) >> redOffset) << 16;
+            int newGreenValue = ((*modifyingPixelPointer & header->GreenMask) >> greenOffset) << 8;
+            int newBlueValue = ((*modifyingPixelPointer & header->BlueMask) >> blueOffset) << 0;
+            int newAlphaValue = ((*modifyingPixelPointer & header->AlphaMask) >> alphaOffset) << 24;
+
+            *modifyingPixelPointer = newAlphaValue | newRedValue | newGreenValue | newBlueValue; //OG RRGGBBAA
+            modifyingPixelPointer++;
+        }
+    }
+
+    return retBitmap;
+}
+
+float clamp(float value) {
+    if (value < 0) {
+        return 0;
+    }
+    else {
+        return value;
+    }
+}
+
+void displayBMP(uint32_t *bufferMemory, const Bitmap *bitmap, float x, float y, int screenWidth, int screenHeight) {
+
+    y += bitmap->offsetY;
+    x += bitmap->offsetX;
+
+    //x = clamp(x);
+    //y = clamp(y);
+
+    int drawHeight = bitmap->height;
+    int drawWidth = bitmap->width;
+    if (drawHeight + y > screenHeight) {
+        drawHeight = (int)(screenHeight - y);
+    }    
+    if (drawWidth + x > screenWidth) {
+        drawWidth = (int)(screenWidth - x);
+    }
+    // Go to upper left corner.
+    bufferMemory += (int)clamp((float)screenWidth * (screenHeight - (bitmap->height + roundFloat(clamp(y)))));
+    bufferMemory += roundFloat(clamp(x));
+
+    uint32_t* pixelPointer = bitmap->startPixelPointer;
+    pixelPointer += (drawHeight-1) * bitmap->width;
+
+    if (x < 0) {
+        drawWidth += roundFloat(x);
+        pixelPointer -= roundFloat(x);
+    }
+    if (y < 0) {
+        drawHeight += roundFloat(y);
+        bufferMemory -= screenWidth * (roundFloat(y));
+    }
+
+    int strideToNextRow = screenWidth - drawWidth;
+    if (strideToNextRow < 0) {
+        strideToNextRow = 0;
+    }
+
+    for (int j = 0; j < drawHeight; j++) {
+        for (int i = 0; i < drawWidth; i++) {
+            float alphaValue = (*pixelPointer >> 24) / 255.0f;
+            uint32_t redValueS = (*pixelPointer & 0xFF0000) >> 16;
+            uint32_t greenValueS = (*pixelPointer & 0x00FF00) >> 8;
+            uint32_t blueValueS = (*pixelPointer & 0x0000FF);
+
+            uint32_t redValueD = (*bufferMemory & 0xFF0000) >> 16;
+            uint32_t greenValueD = (*bufferMemory & 0x00FF00) >> 8;
+            uint32_t blueValueD = *bufferMemory & 0x0000FF;
+
+            uint32_t interpolatedPixel = (uint32_t)(alphaValue * redValueS + (1 - alphaValue) * redValueD) << 16
+                | (uint32_t)(alphaValue * greenValueS + (1 - alphaValue) * greenValueD) << 8
+                | (uint32_t)(alphaValue * blueValueS + (1 - alphaValue) * blueValueD);
+
+            *bufferMemory = interpolatedPixel;
+            bufferMemory++;
+            pixelPointer++; // left to right
+        }
+        pixelPointer += bitmap->width - drawWidth; // Remainder
+        pixelPointer -= 2* bitmap->width; // start at the top, go down
+        bufferMemory += strideToNextRow;
+    }
+}
+
 extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 {
     GameState *gameState = (GameState*)gameMemory->permanentStorage;
     Assert(sizeof(GameState) <= gameMemory->permanentStorageSize);
-
     if (!gameMemory->isinitialized) {
+        gameState->background = loadBMP("../data/test/test_background.bmp", gameMemory->readFile, thread);
+
+        gameState->guyHead[0] = loadBMP("../data/test/test_hero_back_head.bmp", gameMemory->readFile, thread);
+        gameState->guyHead[1] = loadBMP("../data/test/test_hero_front_head.bmp", gameMemory->readFile, thread);
+        gameState->guyHead[2] = loadBMP("../data/test/test_hero_left_head.bmp", gameMemory->readFile, thread);
+        gameState->guyHead[3] = loadBMP("../data/test/test_hero_right_head.bmp", gameMemory->readFile, thread);
+
+        gameState->guyCape[0] = loadBMP("../data/test/test_hero_back_cape.bmp", gameMemory->readFile, thread);
+        gameState->guyCape[1] = loadBMP("../data/test/test_hero_front_cape.bmp", gameMemory->readFile, thread);
+        gameState->guyCape[2] = loadBMP("../data/test/test_hero_left_cape.bmp", gameMemory->readFile, thread);
+        gameState->guyCape[3] = loadBMP("../data/test/test_hero_right_cape.bmp", gameMemory->readFile, thread);
+
+        gameState->guyTorso[0] = loadBMP("../data/test/test_hero_back_torso.bmp", gameMemory->readFile, thread);
+        gameState->guyTorso[1] = loadBMP("../data/test/test_hero_front_torso.bmp", gameMemory->readFile, thread);
+        gameState->guyTorso[2] = loadBMP("../data/test/test_hero_left_torso.bmp", gameMemory->readFile, thread);
+        gameState->guyTorso[3] = loadBMP("../data/test/test_hero_right_torso.bmp", gameMemory->readFile, thread);
+
+        for (int i = 0; i < 4; i++) {
+            gameState->guyHead[i].offsetY = -33;
+            gameState->guyCape[i].offsetY = -33;
+            gameState->guyTorso[i].offsetY = -33;
+            gameState->guyHead[i].offsetX = -52;
+            gameState->guyCape[i].offsetX = -52;
+            gameState->guyTorso[i].offsetX = -52;
+        }
+
         // Construct world
         initWorldArena(&gameState->worldArena, (uint8_t*)gameMemory->permanentStorage + sizeof(GameState),
             (size_t)(gameMemory->permanentStorageSize - sizeof(GameState)));
@@ -87,9 +244,9 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         gameState->world->numChunksX = 256;
         gameState->world->numChunksY = 256;
         gameState->world->numChunksZ = 8;
-        gameState->world->bitsForTiles = 2; // 2**4 = 16
-        gameState->world->tileSize = 1.0f;
+        gameState->world->bitsForTiles = 2; // 2**4 = 16 ||| bitsForTiles**tilesPerChunk = desired num of tiles per chunk
         gameState->world->tilesPerChunk = 4;
+        gameState->world->tileSize = 1.0f;
 
         gameState->world->chunks = pushArray(&gameState->worldArena, 
             gameState->world->numChunksX * gameState->world->numChunksY * gameState->world->numChunksZ, Chunk);
@@ -182,27 +339,32 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         gameState->playerCoord = constructCoordinate(gameState->world, 0, 0, playerZ, playerX, playerY);
         gameState->offsetinTileX = 0.0;
         gameState->offsetinTileY = 0.0;
+        gameState->orientation = 1;
         gameMemory->isinitialized = true;
 
     }
     World *overworld = gameState->world;
 
-    float playerSpeed = 5.0f;
+    float playerSpeed = 6.0f;
     float playerWidth = 0.8f;
     float playerHeight = 1;
     float newOffsetX = gameState->offsetinTileX;
     float newOffsetY = gameState->offsetinTileY;
     if (inputState.Left_Stick.xPosition < 0) {
         newOffsetX -= pixelsToUnits(unitsToPixels(playerSpeed) *inputState.deltaTime);
+        gameState->orientation = 2;
     }
     if (inputState.Left_Stick.xPosition > 0) {
         newOffsetX += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        gameState->orientation = 3;
     }
     if (inputState.Left_Stick.yPosition < 0) {
         newOffsetY += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        gameState->orientation = 0;
     }
     if (inputState.Left_Stick.yPosition > 0) {
         newOffsetY -= pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        gameState->orientation = 1;
     }
 
     float offsetLx = newOffsetX - playerWidth / 2.0f;
@@ -226,22 +388,23 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         gameState->offsetinTileY = newOffsetY;
     }
 
-    drawRectangle(memory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
+    drawRectangle(bitmapMemory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
 
-    float playerX = overworld->tileSize * SCREEN_TILE_WIDTH / 2.0f;
-    float playerY = overworld->tileSize * SCREEN_TILE_HEIGHT / 2.0f;
-    int playerTileX = getTileX(overworld, gameState->playerCoord);
-    int playerTileY = getTileY(overworld, gameState->playerCoord);
+
+    int playerScreenX = getTileX(overworld, gameState->playerCoord) + getChunkX(overworld, gameState->playerCoord)*overworld->tilesPerChunk;
+    int playerScreenY = getTileY(overworld, gameState->playerCoord) + getChunkY(overworld, gameState->playerCoord) * overworld->tilesPerChunk;
 
     // Draw TileMap
+    displayBMP((uint32_t*)bitmapMemory, &gameState->background, 0, 0, width, height);
     float grayShadeForTile = 0.5;
-    const int DEBUG_ZOOMED_X = SCREEN_TILE_WIDTH * 6;
-    const int DEBUG_ZOOMED_Y = SCREEN_TILE_HEIGHT * 6;
 
-    for (int j = playerTileY - DEBUG_ZOOMED_Y /2 - 1; j <= playerTileY + DEBUG_ZOOMED_Y /2; j++) { // -1 to account for offsetY
-        for (int i = playerTileX - DEBUG_ZOOMED_X / 2 - 1; i <= playerTileX + DEBUG_ZOOMED_X / 2; i++) { // -1 to account for offsetX
+    int currentScreenX = playerScreenX/ SCREEN_TILE_WIDTH;
+    int currentScreenY = playerScreenY / SCREEN_TILE_HEIGHT;
+
+    for (int j = 0; j < SCREEN_TILE_HEIGHT; j++) {
+        for (int i = 0; i < SCREEN_TILE_WIDTH; i++) {
             AbsoluteCoordinate tileCoord;
-            tileCoord = constructCoordinate(overworld, getChunkX(overworld, gameState->playerCoord), getChunkY(overworld, gameState->playerCoord), gameState->playerCoord.z,i, j);
+            tileCoord = constructCoordinate(overworld, 0, 0, gameState->playerCoord.z, i + currentScreenX* SCREEN_TILE_WIDTH, j + currentScreenY* SCREEN_TILE_HEIGHT);
             if (getTileValue(overworld, tileCoord) == 1) {
                 grayShadeForTile = 0.5;
             }
@@ -255,23 +418,42 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                 grayShadeForTile = 0.6f;
             }
             else {
-                grayShadeForTile = 0.1f;
+                continue;
             }
 
-            if ((playerTileX == i) && (playerTileY == j)) {
+            if ((playerScreenX == (i + currentScreenX * SCREEN_TILE_WIDTH)) && (playerScreenY == (j+currentScreenY * SCREEN_TILE_HEIGHT))) {
                 grayShadeForTile = 0.2f;
             }
 
-            float minX = unitsToPixels((float)(overworld->tileSize * (i - gameState->offsetinTileX - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
-            float maxX = unitsToPixels((float)(overworld->tileSize * ((i+1 - gameState->offsetinTileX) - (playerTileX - SCREEN_TILE_WIDTH / 2.0f))));
+            float minX = unitsToPixels((float)(overworld->tileSize * i));
+            float maxX = unitsToPixels((float)(overworld->tileSize * (i+1)));
 
-            float minY = unitsToPixels((float)(overworld->tileSize * (j - gameState->offsetinTileY -(playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
-            float maxY = unitsToPixels((float)(overworld->tileSize * ((j +1 - gameState->offsetinTileY ) - (playerTileY - SCREEN_TILE_HEIGHT / 2.0f))));
-            drawRectangle(memory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
+            float minY = unitsToPixels((float)(overworld->tileSize * j));
+            float maxY = unitsToPixels((float)(overworld->tileSize * (j +1)));
+            drawRectangle(bitmapMemory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-    float tileCenterX = overworld->tileSize - playerWidth;
     // Draw Player
-    drawRectangle(memory, width, height, unitsToPixels(playerX + tileCenterX/2.0f), unitsToPixels(playerY),
-        unitsToPixels(playerX + tileCenterX/2.0f + playerWidth), unitsToPixels(playerY + playerHeight), 1.0f, 1.0f, 0.0f);
+    drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH) ,
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT),
+        unitsToPixels(playerScreenX + playerWidth + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH) ,
+        unitsToPixels(playerScreenY + playerHeight + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT)  , 1.0f, 1.0f, 0.0f);
+
+    // Load data
+    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->orientation], unitsToPixels(playerScreenX), unitsToPixels(playerScreenY), width, height);
+    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->orientation], unitsToPixels(playerScreenX), unitsToPixels(playerScreenY), width, height);
+   /* drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH),
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT),
+        unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH) + gameState->guyHead[gameState->orientation].width,
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT) + gameState->guyHead[gameState->orientation].height, 1.0f, 0.0f, 0.0f);*/
+    displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->orientation],
+        unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH),
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT), width, height);
+    displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->orientation],
+        unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH),
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT), width, height);
+    displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->orientation], 
+        unitsToPixels(playerScreenX + gameState->offsetinTileX - currentScreenX * SCREEN_TILE_WIDTH), 
+        unitsToPixels(playerScreenY + gameState->offsetinTileY - currentScreenY * SCREEN_TILE_HEIGHT), width, height);
+    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->orientation],0, 0, width, height);
 }

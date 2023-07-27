@@ -3,7 +3,7 @@
 static const int SCREEN_TILE_WIDTH = 20;
 static const int SCREEN_TILE_HEIGHT = 12;
 
-static const float PIXELS_PER_UNIT = 12.0f;
+static const float PIXELS_PER_UNIT = 48.0f;
 
 struct Chunk {
     uint32_t* tiles;

@@ -1,10 +1,10 @@
-# handmadeHero2
+# handmadeHero
 
-My second attempt at following https://handmadehero.org/ . A series on implementing a complete game from scratch in C without using any libraries.
+My attempt at following https://handmadehero.org/ . A series on implementing a complete game from scratch in C without using any libraries.
 
 The code is in a highly experimental state so expect it to be very ugly and unsctructured.
 
-Currently on day 31.
+Currently on day 40.
 
 ## Things implemented so far:
 * Windows message queue processing.
@@ -15,5 +15,7 @@ Currently on day 31.
 * Frame time and FPS reporting.
 * Basic utility for reading and writing files.
 * Game input reporting and playback for debugging.
-* Tilemap system.
+* Tilemap system. Sparse memory storage.
 * Collision checking.
+* BMP file loading and rendering.
+* Alpha blending.

@@ -123,7 +123,7 @@ AbsoluteCoordinate constructCoordinate(World* world, int chunkX, int chunkY, int
 }
 
 bool canMove(World* world, AbsoluteCoordinate coord) {
-    return getTileValue(world, coord) != 0;
+    return getTileValue(world, coord) != 0 && getTileValue(world, coord) != 2;
 }
 
 
