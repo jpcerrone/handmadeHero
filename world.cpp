@@ -18,18 +18,17 @@ int getChunkSize(World* world) {
 
 int getTileValue(World* world, AbsoluteCoordinate coord) {
 
-    int chunkX = coord.x >> world->bitsForTiles;
-    int chunkY = coord.y >> world->bitsForTiles;
-    int tileX = coord.x & ((1 << world->bitsForTiles) - 1); // creates mask with 'bitsForTiles' 1's. ie (4bft): 0x 0000 0000 0000 1111
-    int tileY = coord.y & ((1 << world->bitsForTiles) - 1);
-    Assert(chunkX >= 0);
-    Assert(chunkY >= 0);
+    Vector2 chunk = { (float)(coord.x >> world->bitsForTiles), (float)(coord.y >> world->bitsForTiles) };
+    Vector2 tile = { (float)(coord.x & ((1 << world->bitsForTiles) - 1)), (float)(coord.y & ((1 << world->bitsForTiles) - 1)) };// creates mask with 'bitsForTiles' 1's. ie (4bft): 0x 0000 0000 0000 1111
+
+    Assert(chunk.x >= 0);
+    Assert(chunk.y >= 0);
     Assert(coord.z >= 0);
     Assert(coord.z < (int)world->numChunksZ);
-    Assert(tileX >= 0);
-    Assert(tileY >= 0);
-    if (world->chunks[coord.z * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX].tiles != nullptr) {
-        return world->chunks[coord.z * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX].tiles[tileY * getChunkSize(world) + tileX];
+    Assert(tile.x >= 0);
+    Assert(tile.y >= 0);
+    if (world->chunks[coord.z * world->numChunksY * world->numChunksX + (int)chunk.y * world->numChunksY + (int)chunk.x].tiles != nullptr) {
+        return world->chunks[coord.z * world->numChunksY * world->numChunksX + (int)chunk.y * world->numChunksY + (int)chunk.x].tiles[(int)tile.y * getChunkSize(world) + (int)tile.x];
     }
     else {
         return 0;
@@ -37,25 +36,24 @@ int getTileValue(World* world, AbsoluteCoordinate coord) {
 }
 
 void setTileValue(MemoryArena* worldArena, World* world, int absoluteX, int absoluteY, int chunkZ, int value) {
-    uint32_t chunkX = 0;
-    uint32_t chunkY = 0;
+    Vector2 chunk = { 0,0 };
     while (absoluteX >= world->tilesPerChunk) {
         absoluteX -= world->tilesPerChunk;
-        chunkX += 1;
+        chunk.x += 1;
     }
     while (absoluteY >= world->tilesPerChunk) {
         absoluteY -= world->tilesPerChunk;
-        chunkY += 1;
+        chunk.y += 1;
     }
-    while (chunkX >= world->numChunksX) {
-        chunkX -= world->numChunksX;
+    while (chunk.x >= world->numChunksX) {
+        chunk.x -= world->numChunksX;
     }
-    while (chunkY >= world->numChunksY) {
-        chunkY -= world->numChunksY;
+    while (chunk.y >= world->numChunksY) {
+        chunk.y -= world->numChunksY;
     }
     Assert(chunkZ < (int)world->numChunksZ);
 
-    Chunk* currentChunk = &world->chunks[chunkZ * world->numChunksY * world->numChunksX + chunkY * world->numChunksY + chunkX];
+    Chunk* currentChunk = &world->chunks[chunkZ * world->numChunksY * world->numChunksX + (int)chunk.y * world->numChunksY + (int)chunk.x];
 
     if (currentChunk->tiles == nullptr) {
         uint32_t* tiles = pushArray(worldArena, world->tilesPerChunk * world->tilesPerChunk, uint32_t);
@@ -65,59 +63,47 @@ void setTileValue(MemoryArena* worldArena, World* world, int absoluteX, int abso
     currentChunk->tiles[absoluteY * world->tilesPerChunk + absoluteX] = value;
 }
 
-int getTileX(World* world, AbsoluteCoordinate coord) {
-    int tileX = coord.x & ((1 << world->bitsForTiles) - 1);
-    return tileX;
+Vector2 getTile(World* world, AbsoluteCoordinate coord) {
+    return { (float)(coord.x & ((1 << world->bitsForTiles) - 1)), (float)(coord.y & ((1 << world->bitsForTiles) - 1) )};
 }
 
-int getTileY(World* world, AbsoluteCoordinate coord) {
-    int tileY = coord.y & ((1 << world->bitsForTiles) - 1);
-    return tileY;
+Vector2 getChunk(World* world, AbsoluteCoordinate coord) {
+    return { (float)(coord.x >> world->bitsForTiles), (float)(coord.y >> world->bitsForTiles) };
 }
 
-int getChunkX(World* world, AbsoluteCoordinate coord) {
-    int chunkX = coord.x >> world->bitsForTiles;
-    return chunkX;
-}
-
-int getChunkY(World* world, AbsoluteCoordinate coord) {
-    int chunkY = coord.y >> world->bitsForTiles;
-    return chunkY;
-}
-
-AbsoluteCoordinate constructCoordinate(World* world, int chunkX, int chunkY, int chunkZ, int tileX, int tileY) {
-    while (tileX >= getChunkSize(world)) {
-        tileX -= getChunkSize(world);
-        chunkX += 1;
+AbsoluteCoordinate constructCoordinate(World* world, Vector2 chunk, int chunkZ, Vector2 tile) {
+    while (tile.x >= getChunkSize(world)) {
+        tile.x -= getChunkSize(world);
+        chunk.x += 1;
     }
-    while (tileX < 0) {
-        tileX += getChunkSize(world);
-        chunkX -= 1;
+    while (tile.x < 0) {
+        tile.x += getChunkSize(world);
+        chunk.x -= 1;
     }
-    while (tileY >= getChunkSize(world)) {
-        tileY -= getChunkSize(world);
-        chunkY += 1;
+    while (tile.y >= getChunkSize(world)) {
+        tile.y -= getChunkSize(world);
+        chunk.y += 1;
     }
-    while (tileY < 0) {
-        tileY += getChunkSize(world);
-        chunkY -= 1;
+    while (tile.y < 0) {
+        tile.y += getChunkSize(world);
+        chunk.y -= 1;
     }
-    while (chunkX < 0) {
-        chunkX += world->numChunksX;
+    while (chunk.x < 0) {
+        chunk.x += world->numChunksX;
     }
-    while (chunkY < 0) {
-        chunkY += world->numChunksY;
+    while (chunk.y < 0) {
+        chunk.y += world->numChunksY;
     }
-    while (chunkX >= (int)world->numChunksX) {
-        chunkX -= world->numChunksX;
+    while (chunk.x >= (int)world->numChunksX) {
+        chunk.x -= world->numChunksX;
     }
-    while (chunkY >= (int)world->numChunksY) {
-        chunkY -= world->numChunksY;
+    while (chunk.y >= (int)world->numChunksY) {
+        chunk.y -= world->numChunksY;
     }
     AbsoluteCoordinate ret;
 
-    ret.x = (chunkX << (world->bitsForTiles)) | (tileX);
-    ret.y = (chunkY << (world->bitsForTiles)) | (tileY);
+    ret.x = ((int)(chunk.x) << (world->bitsForTiles)) | ((int)tile.x);
+    ret.y = ((int)(chunk.y) << (world->bitsForTiles)) | ((int)tile.y);
     ret.z = chunkZ;
     return ret;
 }
@@ -127,47 +113,45 @@ bool canMove(World* world, AbsoluteCoordinate coord) {
 }
 
 
-AbsoluteCoordinate canonicalize(World* world, AbsoluteCoordinate* coord, float* offsetX, float* offsetY) {
-    int tileX = getTileX(world, *coord);
-    int tileY = getTileY(world, *coord);
-    int chunkX = getChunkX(world, *coord);
-    int chunkY = getChunkY(world, *coord);
+AbsoluteCoordinate canonicalize(World* world, AbsoluteCoordinate* coord, Vector2* offset) {
+    Vector2 tile = getTile(world, *coord);
+    Vector2 chunk = getChunk(world, *coord);
     int chunkZ = coord->z;
     // Offset
     // TODO: this prob wont work for very large values, will need to do a while loop
-    if (*offsetX > world->tileSize / 2.0f) {
-        *offsetX -= world->tileSize;
-        tileX += 1;
+    if (offset->x > world->tileSize / 2.0f) {
+        offset->x -= world->tileSize;
+        tile.x += 1;
     }
-    if (*offsetX < -world->tileSize / 2.0f) {
-        *offsetX += world->tileSize;
-        tileX -= 1;
+    if (offset->x < -world->tileSize / 2.0f) {
+        offset->x += world->tileSize;
+        tile.x -= 1;
     }
-    if (*offsetY > world->tileSize / 2.0f) {
-        *offsetY -= world->tileSize;
-        tileY += 1;
+    if (offset->y > world->tileSize / 2.0f) {
+        offset->y -= world->tileSize;
+        tile.y += 1;
     }
-    if (*offsetY < -world->tileSize / 2.0f) {
-        *offsetY += world->tileSize;
-        tileY -= 1;
+    if (offset->y < -world->tileSize / 2.0f) {
+        offset->y += world->tileSize;
+        tile.y -= 1;
     }
 
     // Chunk
-    if (tileX >= getChunkSize(world)) {
-        tileX -= getChunkSize(world);
-        chunkX += 1;
+    if (tile.x >= getChunkSize(world)) {
+        tile.x -= getChunkSize(world);
+        chunk.x += 1;
     }
-    if (tileX < 0) {
-        tileX = getChunkSize(world) - 1;
-        chunkX -= 1;
+    if (tile.x < 0) {
+        tile.x = (float)getChunkSize(world) - 1;
+        chunk.x -= 1;
     }
-    if (tileY >= getChunkSize(world)) {
-        tileY -= getChunkSize(world);
-        chunkY += 1;
+    if (tile.y >= getChunkSize(world)) {
+        tile.y -= (float)getChunkSize(world);
+        chunk.y += 1;
     }
-    if (tileY < 0) {
-        tileY = getChunkSize(world) - 1;
-        chunkY -= 1;
+    if (tile.y < 0) {
+        tile.y = (float)getChunkSize(world) - 1;
+        chunk.y -= 1;
     }
-    return constructCoordinate(world, chunkX, chunkY, chunkZ, tileX, tileY);
+    return constructCoordinate(world, chunk, chunkZ, tile);
 }

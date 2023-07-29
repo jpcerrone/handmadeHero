@@ -5,6 +5,7 @@
 #include <cinttypes>
 #include "world.h"
 #include "memory_arena.h"
+#include "math.h"
 #ifdef DEV_BUILD
 #define Assert(expression) if(!(expression)){std::cout << "Assertion failure at " << __FUNCTION__ << "-" << __FILE__ << ":" << __LINE__ << std::endl; *(int*) 0 = 0;}
 #else
@@ -51,14 +52,12 @@ struct Bitmap {
     uint32_t *startPixelPointer;
     int width;
     int height;
-    int offsetX;
-    int offsetY;
+    Vector2 offset;
 };
 
 struct GameState{
     AbsoluteCoordinate playerCoord;
-    float offsetinTileX;
-    float offsetinTileY;
+    Vector2 offsetInTile;
     int orientation; // 0 back 1 front 2 left 3 right
 
     MemoryArena worldArena;
@@ -80,14 +79,9 @@ struct AxisState{
     float yPosition;
 };
 
-struct MousePosition {
-    int x;
-    int y;
-};
-
 struct GameInputState{
     float deltaTime;
-    MousePosition mousePosition;
+    Vector2 mousePosition;
     union{
         ButtonState mouseButtons[2];
         ButtonState buttons[4];

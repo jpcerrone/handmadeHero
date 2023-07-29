@@ -587,8 +587,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 POINT mousePos;
                 GetCursorPos(&mousePos);
                 ScreenToClient(windowHandle, &mousePos);
-                newState.mousePosition.x = mousePos.x;
-                newState.mousePosition.y = mousePos.y;
+                newState.mousePosition.x = (float)mousePos.x;
+                newState.mousePosition.y = (float)mousePos.y;
 
                 MSG message;
                 while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
