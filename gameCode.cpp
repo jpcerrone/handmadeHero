@@ -337,35 +337,41 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         int playerZ = 0;
         gameState->playerCoord = constructCoordinate(gameState->world, {0,0}, playerZ, player);
         gameState->offsetInTile = { 0.0, 0.0 };
+        gameState->velocity = { 0,0 };
         gameState->orientation = 1;
         gameMemory->isinitialized = true;
 
     }
     World* overworld = gameState->world;
 
-    float playerSpeed = 6.0f;
+    static float playerSpeed = 40.0f;
+    static float drag = 5.0f;
+
+    Vector2 playerAcceleration = { 0,0 };
     float playerWidth = 0.8f;
     float playerHeight = 1;
     Vector2 newOffset = gameState->offsetInTile;
-    if (inputState.Left_Stick.yPosition != 0 && inputState.Left_Stick.xPosition != 0) { // Moving diagonally
-        playerSpeed = playerSpeed / 1.41f; // sqrt(2)
-    }
     if (inputState.Left_Stick.xPosition < 0) {
-        newOffset.x -= pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        playerAcceleration.x = -playerSpeed;
         gameState->orientation = 2;
     }
     if (inputState.Left_Stick.xPosition > 0) {
-        newOffset.x += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        playerAcceleration.x = playerSpeed;
         gameState->orientation = 3;
     }
     if (inputState.Left_Stick.yPosition < 0) {
-        newOffset.y += pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        playerAcceleration.y = playerSpeed;
         gameState->orientation = 0;
     }
     if (inputState.Left_Stick.yPosition > 0) {
-        newOffset.y -= pixelsToUnits(unitsToPixels(playerSpeed) * inputState.deltaTime);
+        playerAcceleration.y = -playerSpeed;
         gameState->orientation = 1;
     }
+    if (inputState.Left_Stick.yPosition != 0 && inputState.Left_Stick.xPosition != 0) { // Moving diagonally
+        playerAcceleration /= 1.41f; // sqrt(2)
+    }
+    newOffset += playerAcceleration * square(inputState.deltaTime) / 2.0f + inputState.deltaTime * gameState->velocity;
+    gameState->velocity += playerAcceleration * inputState.deltaTime - drag * gameState->velocity * inputState.deltaTime;
 
     Vector2 offsetLx = newOffset - Vector2{ playerWidth / 2.0f, playerHeight / 2.0f};
     Vector2 offsetRx = newOffset + Vector2{ playerWidth / 2.0f, -playerHeight / 2.0f };

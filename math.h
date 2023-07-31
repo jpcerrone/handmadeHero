@@ -37,3 +37,14 @@ Vector2 & operator+=(Vector2& A, Vector2 B) {
 	A = A + B;
 	return A;
 }
+
+Vector2& operator/=(Vector2& A, const float scalar) {
+	A = A / scalar;
+	return A;
+}
+
+//
+
+float square(float value) {
+	return (value * value);
+}
