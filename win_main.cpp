@@ -165,29 +165,6 @@ Dimension getWindowDimension(HWND windowHandle)
     return retDimension;
 }
 
-void openFileAndDisplayName()
-{
-    IFileOpenDialog *openDialog;
-    // Create the FileOpenDialog object.
-    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_PPV_ARGS(&openDialog))))
-    {
-        if (SUCCEEDED(openDialog->Show(NULL)))
-        {
-            IShellItem *itemSelected;
-            if (SUCCEEDED(openDialog->GetResult(&itemSelected)))
-            {
-                PWSTR filePathOfItem;
-                if (SUCCEEDED(itemSelected->GetDisplayName(SIGDN_FILESYSPATH, &filePathOfItem)))
-                {
-                    MessageBoxW(NULL, filePathOfItem, L"File Path", MB_OK);
-                    CoTaskMemFree(filePathOfItem);
-                }
-                itemSelected->Release();
-            }
-        }
-        openDialog->Release();
-    }
-}
 struct AudioState_t
 {
     WAVEFORMATEX *myFormat;
@@ -507,7 +484,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             memory.writeFile = writeFile;
             memory.freeFileMemory = freeFileMemory;
             // Memory.TransientStorage = (uint8 *)Memory.PermanentStorage + Memory.PermanentStorageSize; //TODO: only 1 virtual alloc call
-            GameInputState newState = {};
+            GameInputState inputStates[5];
+            memset(inputStates, 0, sizeof(GameInputState)*5);
 
             Record = {};
             HANDLE stateRecHandle = CreateFile("gameState.rec", GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
@@ -518,11 +496,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             //DWORD error = GetLastError();
             while (gameRunning)
             {
+                // Retain 'isDown' and axis values from previous keyboard input. Discard halfTransitionCounts.
+                GameInputState newInputState = {};
+                for (int b = 0; b < sizeof(newInputState.buttons)/ sizeof(ButtonState); b++) {
+                    newInputState.buttons[b].isDown = inputStates[4].buttons[b].isDown;
+                }
+                for (int a = 0; a < sizeof(newInputState.axis) / sizeof(AxisState); a++) {
+                    newInputState.axis[a] = inputStates[4].axis[a];
+                }
+                inputStates[4] = newInputState;
                 loadGameCode();
 
                 // Joypad Input
                 DWORD dwResult;
-                for (DWORD i = 0; i < 1 /*XUSER_MAX_COUNT - 1 player only for now*/; i++)
+                for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
                 {
                     XINPUT_STATE state;
                     ZeroMemory(&state, sizeof(XINPUT_STATE));
@@ -536,46 +523,59 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         WORD buttons = state.Gamepad.wButtons;
                         if (buttons & XINPUT_GAMEPAD_A)
                         { // ex: buttons:0101, A:0001, buttons & A:0001, casting anything other than 0 to bool returns true.
-                            if (newState.A_Button.isDown)
+                            if (inputStates[i].A_Button.isDown)
                             {
-                                newState.A_Button = {1, true};
+                                inputStates[i].A_Button = {1, true};
                             }
                             else
                             {
-                                newState.A_Button = {0, true};
+                                inputStates[i].A_Button = {0, true};
                             }
                         } else{
-                            newState.A_Button = {0, false};
+                            inputStates[i].A_Button = {0, false};
                         }
                         if (buttons & XINPUT_GAMEPAD_B)
                         {
-                            if (newState.B_Button.isDown)
+                            if (inputStates[i].B_Button.isDown)
                             {
-                                newState.B_Button = {1, true};
+                                inputStates[i].B_Button = {1, true};
                             }
                             else
                             {
-                                newState.B_Button = {0, true};
+                                inputStates[i].B_Button = {0, true};
                             }
                         } else{
-                            newState.B_Button = {0, false};
+                            inputStates[i].B_Button = {0, false};
+                        }                        
+                        if (buttons & XINPUT_GAMEPAD_START)
+                        {
+                            if (inputStates[i].Start_Button.isDown)
+                            {
+                                inputStates[i].Start_Button = { inputStates[i].Start_Button.halfTransitionCount + 1, true};
+                            }
+                            else
+                            {
+                                inputStates[i].Start_Button = {1, true};
+                            }
+                        } else{
+                            inputStates[i].Start_Button = {0, false};
                         }
                         if (state.Gamepad.sThumbLX){
                             if(state.Gamepad.sThumbLX >= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){
-                                newState.Left_Stick.xPosition = (state.Gamepad.sThumbLX - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-                                LOG(newState.Left_Stick.xPosition);
+                                inputStates[i].Left_Stick.xPosition = (state.Gamepad.sThumbLX - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                                LOG(inputStates[i].Left_Stick.xPosition);
                             } else if (state.Gamepad.sThumbLX <= -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){
-                                newState.Left_Stick.xPosition = (state.Gamepad.sThumbLX + XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-                                LOG(newState.Left_Stick.xPosition);
+                                inputStates[i].Left_Stick.xPosition = (state.Gamepad.sThumbLX + XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) / (32767.0f - XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                                LOG(inputStates[i].Left_Stick.xPosition);
                             } else{
-                                newState.Left_Stick.xPosition = 0;
+                                inputStates[i].Left_Stick.xPosition = 0;
                             }
                         }
                         if (state.Gamepad.sThumbLY){
                             if(state.Gamepad.sThumbLY <= -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || state.Gamepad.sThumbLY >= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE){    
-                                newState.Left_Stick.yPosition = state.Gamepad.sThumbLY / 32767.0f;
+                                inputStates[i].Left_Stick.yPosition = -state.Gamepad.sThumbLY / 32767.0f;
                             } else{
-                                    newState.Left_Stick.yPosition = 0;
+                                    inputStates[i].Left_Stick.yPosition = 0;
                             }
                         }
                     }
@@ -584,11 +584,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         // Controller is not connected
                     }
                 }
+
                 POINT mousePos;
                 GetCursorPos(&mousePos);
                 ScreenToClient(windowHandle, &mousePos);
-                newState.mousePosition.x = (float)mousePos.x;
-                newState.mousePosition.y = (float)mousePos.y;
+                inputStates[4].mousePosition.x = (float)mousePos.x; // Hardcodign first player for debug only
+                inputStates[4].mousePosition.y = (float)mousePos.y;
 
                 MSG message;
                 while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
@@ -641,22 +642,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     {
                         switch(message.wParam){
                             case 'Z':{
-                                newState.A_Button = {0, false};
+                                inputStates[4].A_Button = {0, false};
                             } break;
                             case 'X':{
-                                newState.B_Button = {0, false};
+                                inputStates[4].B_Button = {0, false};
+                            } break;
+                            case VK_SPACE: {
+                                inputStates[4].Start_Button = { 0, false };
                             } break;
                             case VK_RIGHT:{
-                                newState.Left_Stick.xPosition = 0.0;
+                                inputStates[4].Left_Stick.xPosition = 0.0;
                             }break;
                             case VK_LEFT:{
-                                newState.Left_Stick.xPosition = 0.0;
+                                inputStates[4].Left_Stick.xPosition = 0.0;
                             }break;
                             case VK_UP: { // TODO: simplify into an or with the next one
-                                newState.Left_Stick.yPosition = 0.0;
+                                inputStates[4].Left_Stick.yPosition = 0.0;
                             }break;
                             case VK_DOWN: {
-                                newState.Left_Stick.yPosition = 0.0;
+                                inputStates[4].Left_Stick.yPosition = 0.0;
                             }break;
                             default: break;
                         }
@@ -667,17 +671,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         bool wasDown = message.lParam & (1 << 30);
                         switch(message.wParam){
                             case 'Z':{
-                                newState.A_Button = {1, true};
+                                inputStates[4].A_Button = {1, true};
                             } break;
                             case 'X':{
-                                newState.B_Button = {1, true};
+                                inputStates[4].B_Button = {1, true};
                             } break;
                             case 'R': { // Windows only for now.
                                 if (!wasDown)
                                 {
                                     if (!Record.recording) {
                                         CopyMemory(Record.gameState, memory.permanentStorage, (size_t)memory.permanentStorageSize);
-                                        writeFile(&thread, "inputRecord.rec", &newState, 0);
+                                        writeFile(&thread, "inputRecord.rec", &inputStates[4], 0);
                                         Record.recording = true;
                                         Record.inputsWritten = 0;
                                     } else {
@@ -689,40 +693,42 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                                 }
                             } break;
                             case VK_RIGHT:{
-                                newState.Left_Stick.xPosition = 1.0;
+                                inputStates[4].Left_Stick.xPosition = 1.0;
                             }break;
                             case VK_LEFT:{
-                                newState.Left_Stick.xPosition = -1.0;
+                                inputStates[4].Left_Stick.xPosition = -1.0;
                             }break;
                             case VK_UP: {
-                                newState.Left_Stick.yPosition = -1.0;
+                                inputStates[4].Left_Stick.yPosition = -1.0;
                             }break;
                             case VK_DOWN: {
-                                newState.Left_Stick.yPosition = 1.0;
+                                inputStates[4].Left_Stick.yPosition = 1.0;
                             }break;
                             case VK_SPACE:
                             {
-                                if (!wasDown)
-                                {
-                                    openFileAndDisplayName();
+                                if (!wasDown) {
+                                    inputStates[4].Start_Button = { 1, true };
                                 }
-                                LOG("SPACE" + wasDown);
+                                else {
+                                    inputStates[4].Start_Button = { inputStates[4].Start_Button.halfTransitionCount + 1, true };
+                                }
+
                             } break;
                             default: break;
                         }
                     }
                     break;
                     case WM_RBUTTONDOWN: { //TODO: handle isDown, (hh day 25)
-                        newState.Mouse_R.isDown = true;
+                        inputStates[4].Mouse_R.isDown = true;
                     } break;
                     case WM_RBUTTONUP: {
-                        newState.Mouse_R.isDown = false;
+                        inputStates[4].Mouse_R.isDown = false;
                     } break;
                     case WM_LBUTTONDOWN: {
-                        newState.Mouse_L.isDown = true;
+                        inputStates[4].Mouse_L.isDown = true;
                     } break;
                     case WM_LBUTTONUP: {
-                        newState.Mouse_L.isDown = false;
+                        inputStates[4].Mouse_L.isDown = false;
                     } break;
                     case WM_QUIT:
                     {
@@ -738,7 +744,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     }
                 }
                 if (Record.recording) {
-                    appendToFile(&thread, "inputRecord.rec", &newState, sizeof(newState));
+                    appendToFile(&thread, "inputRecord.rec", &inputStates[4], sizeof(inputStates[4]));
                     Record.inputsWritten++;
                 }
                 if (Record.playing) {
@@ -746,7 +752,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     if (Record.inputsRead <= Record.inputsWritten) {
                         GameInputState* input = ((GameInputState*)inputRecord.memory) + Record.inputsRead;
                         Assert(input != nullptr);
-                        newState = *input;
+                        inputStates[4] = *input;
                         Record.inputsRead++;
                     }
                     else {
@@ -762,8 +768,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 UINT32 numFramesAvailable = AudioState.bufferFrameCount - numFramesPadding;
                 fillWASAPIBuffer(numFramesAvailable);
 
-                newState.deltaTime = (float)(1.0f / desiredFPS);
-                GameCode.updateAndRender(&thread, &memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, newState);
+                float deltaTime = (float)(1.0f / desiredFPS);
+                GameCode.updateAndRender(&thread, &memory, numFramesAvailable, AudioState.buffer, AudioState.myFormat->nSamplesPerSec, globalBitmap.memory, globalBitmap.dimensions.width, globalBitmap.dimensions.height, inputStates, deltaTime);
 
                 
                 // Timing

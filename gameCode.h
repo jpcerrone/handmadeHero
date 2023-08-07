@@ -55,11 +55,19 @@ struct Bitmap {
     Vector2 offset;
 };
 
-struct GameState{
+struct Entity {
     AbsoluteCoordinate playerCoord;
     Vector2 offsetInTile;
     Vector2 velocity;
     int orientation; // 0 back 1 front 2 left 3 right
+
+    bool active;
+};
+
+struct GameState{
+    
+    Entity players[4];
+    int assignedPlayerForControllers[5];
 
     MemoryArena worldArena;
     World* world;
@@ -81,26 +89,34 @@ struct AxisState{
 };
 
 struct GameInputState{
-    float deltaTime;
     Vector2 mousePosition;
-    union{
+    union {
         ButtonState mouseButtons[2];
-        ButtonState buttons[4];
-        AxisState axis[2];
         struct {
             ButtonState Mouse_L;
             ButtonState Mouse_R;
+        };
+    };
+    union {
+        ButtonState buttons[5];
+        struct {
             ButtonState A_Button;
             ButtonState B_Button;
             ButtonState X_Button;
             ButtonState Y_Button;
+            ButtonState Start_Button;
+        };
+    };
+    union {
+        AxisState axis[2];
+        struct {
             AxisState Left_Stick;
             AxisState Right_Stick;
-        } ;
+        };
     };
 };
 
-#define UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* bitmapMemory, int width, int height, GameInputState inputState)
+#define UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory* gameMemory, uint32_t framesToWrite, void* bufferLocation, int samplesPerSec, void* bitmapMemory, int width, int height, GameInputState* inputStates, float deltaTime)
 typedef UPDATE_AND_RENDER(updateAndRender_t);
 
 // TODO: handle multiple controllers:

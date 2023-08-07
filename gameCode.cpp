@@ -6,14 +6,6 @@
 #include "memory_arena.cpp"
 #include "instrinsics.h"
 
-int roundFloat(float value) {
-    return (int)(value + 0.5f);
-}
-
-uint32_t roundUFloat(float value) {
-    return (uint32_t)(value + 0.5f);
-}
-
 void drawRectangle(void* bitmap, int bmWidth, int bmHeight, float minX, float minY, float maxX, float maxY, float r, float g, float b) {
     uint32_t* pixel = (uint32_t*)bitmap;
 
@@ -333,12 +325,10 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
 
         // Player
-        Vector2 player = { 1,2 };
-        int playerZ = 0;
-        gameState->playerCoord = constructCoordinate(gameState->world, {0,0}, playerZ, player);
-        gameState->offsetInTile = { 0.0, 0.0 };
-        gameState->velocity = { 0,0 };
-        gameState->orientation = 1;
+        memset(gameState->players, {}, sizeof(gameState->players));
+        for (int c = 0; c < 5; c++) {
+            gameState->assignedPlayerForControllers[c] = -1;
+        }
         gameMemory->isinitialized = true;
 
     }
@@ -347,64 +337,140 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     static float playerSpeed = 40.0f;
     static float drag = 5.0f;
 
-    Vector2 playerAcceleration = { 0,0 };
     float playerWidth = 0.8f;
     float playerHeight = 1;
-    Vector2 newOffset = gameState->offsetInTile;
-    if (inputState.Left_Stick.xPosition < 0) {
-        playerAcceleration.x = -playerSpeed;
-        gameState->orientation = 2;
-    }
-    if (inputState.Left_Stick.xPosition > 0) {
-        playerAcceleration.x = playerSpeed;
-        gameState->orientation = 3;
-    }
-    if (inputState.Left_Stick.yPosition < 0) {
-        playerAcceleration.y = playerSpeed;
-        gameState->orientation = 0;
-    }
-    if (inputState.Left_Stick.yPosition > 0) {
-        playerAcceleration.y = -playerSpeed;
-        gameState->orientation = 1;
-    }
-    if (inputState.Left_Stick.yPosition != 0 && inputState.Left_Stick.xPosition != 0) { // Moving diagonally
-        playerAcceleration /= 1.41f; // sqrt(2)
-    }
-    newOffset += playerAcceleration * square(inputState.deltaTime) / 2.0f + inputState.deltaTime * gameState->velocity;
-    gameState->velocity += playerAcceleration * inputState.deltaTime - drag * gameState->velocity * inputState.deltaTime;
-
-    Vector2 offsetLx = newOffset - Vector2{ playerWidth / 2.0f, playerHeight / 2.0f};
-    Vector2 offsetRx = newOffset + Vector2{ playerWidth / 2.0f, -playerHeight / 2.0f };
-    AbsoluteCoordinate middle = canonicalize(overworld, &gameState->playerCoord, &newOffset);
-    AbsoluteCoordinate left = canonicalize(overworld, &gameState->playerCoord, &offsetLx);
-    AbsoluteCoordinate right = canonicalize(overworld, &gameState->playerCoord, &offsetRx);
-    if (canMove(overworld, middle) && canMove(overworld, left) && canMove(overworld, right)) {
-        if (gameState->playerCoord != middle) {
-            if (getTileValue(overworld, middle) == 3) {
-                middle.z = 1;
-            }
-            else if (getTileValue(overworld, middle) == 4) {
-                middle.z = 0;
-            }
-        }
-        gameState->playerCoord = middle;
-        gameState->offsetInTile = newOffset;
-    }
 
     drawRectangle(bitmapMemory, width, height, 0, 0, (float)width, (float)height, 0.0f, 0.0f, 0.0f); // Clear screen to black
 
-    Vector2 playerScreen = getTile(overworld, gameState->playerCoord) + getChunk(overworld, gameState->playerCoord) * (float)overworld->tilesPerChunk;                         
+    for (int c = 0; c < 5; c++) {
+        if (inputStates[c].Start_Button.isDown && (inputStates[c].Start_Button.halfTransitionCount == 1)) {
+            if (gameState->assignedPlayerForControllers[c] == -1) {
+                for (int p = 0; p < 4; p++) {
+                    if (!gameState->players[p].active) {
+                        gameState->players[p].active = true;
+                        gameState->players[p].playerCoord = constructCoordinate(gameState->world, { 0,0 }, 0, { 1,2 });
+                        gameState->players[p].offsetInTile = { 0.0, 0.0 };
+                        gameState->players[p].velocity = { 0,0 };
+                        gameState->players[p].orientation = 1;
+                        gameState->assignedPlayerForControllers[c] = p;
+                        break;
+                    }
+                }
+            }
+            else {
+                gameState->players[gameState->assignedPlayerForControllers[c]].active = false;
+                gameState->assignedPlayerForControllers[c] = -1;
+            }
+        }
+    }
 
-        // Draw TileMap
+    for (int c = 0; c < 5; c++) {
+        int p = gameState->assignedPlayerForControllers[c];
+        if (p != -1){
+            Vector2 playerAcceleration = { 0,0 };
+
+            Vector2 newOffset = gameState->players[p].offsetInTile;
+            if (inputStates[c].Left_Stick.xPosition < 0) {
+                playerAcceleration.x = -playerSpeed;
+                gameState->players[p].orientation = 2;
+            }
+            if (inputStates[c].Left_Stick.xPosition > 0) {
+                playerAcceleration.x = playerSpeed;
+                gameState->players[p].orientation = 3;
+            }
+            if (inputStates[c].Left_Stick.yPosition < 0) {
+                playerAcceleration.y = playerSpeed;
+                gameState->players[p].orientation = 0;
+            }
+            if (inputStates[c].Left_Stick.yPosition > 0) {
+                playerAcceleration.y = -playerSpeed;
+                gameState->players[p].orientation = 1;
+            }
+            if (inputStates[c].Left_Stick.yPosition != 0 && inputStates[c].Left_Stick.xPosition != 0) { // Moving diagonally
+                playerAcceleration /= 1.41f; // sqrt(2)
+                if (fabs(inputStates[c].Left_Stick.yPosition) > fabs(inputStates[c].Left_Stick.xPosition)) {
+                    gameState->players[p].orientation = (inputStates[c].Left_Stick.yPosition > 0) ? 1 : 0;
+                }
+                else {
+                    gameState->players[p].orientation = (inputStates[c].Left_Stick.xPosition > 0) ? 3 : 2;
+                }
+            }
+            Vector2 oldOffset = newOffset;
+
+            playerAcceleration += -drag * gameState->players[p].velocity;
+            newOffset += playerAcceleration * square(deltaTime) / 2.0f + deltaTime * gameState->players[p].velocity;
+            gameState->players[p].velocity += playerAcceleration * deltaTime;
+
+            Vector2 offsetLx = newOffset - Vector2{ playerWidth / 2.0f, 0};
+            Vector2 offsetRx = newOffset + Vector2{ playerWidth / 2.0f, 0 };
+            AbsoluteCoordinate middle = canonicalize(overworld, &gameState->players[p].playerCoord, &newOffset);
+            AbsoluteCoordinate left = canonicalize(overworld, &gameState->players[p].playerCoord, &offsetLx);
+            AbsoluteCoordinate right = canonicalize(overworld, &gameState->players[p].playerCoord, &offsetRx);
+            bool move = true;
+            AbsoluteCoordinate collidingCoord = middle;
+            Vector2 wallNormal = { 0,0 };
+            if (!canMove(overworld, middle)) {
+                move = false;
+                collidingCoord = middle;
+            }
+            if (!canMove(overworld, left)) {
+                move = false;
+                collidingCoord = left;
+            }
+            if (!canMove(overworld, right)) {
+                move = false;
+                collidingCoord = right;
+            }
+            if (move) {
+                if (gameState->players[p].playerCoord != middle) {
+                    if (getTileValue(overworld, middle) == 3) {
+                        middle.z = 1;
+                    }
+                    else if (getTileValue(overworld, middle) == 4) {
+                        middle.z = 0;
+                    }
+                }
+                gameState->players[p].playerCoord = middle;
+                gameState->players[p].offsetInTile = newOffset;
+
+            }
+            else {
+                if (getTile(overworld, collidingCoord).x < getTile(overworld, gameState->players[p].playerCoord).x) {
+                    wallNormal = { 1,0 };
+                }
+                if (getTile(overworld, collidingCoord).x > getTile(overworld, gameState->players[p].playerCoord).x) {
+                    wallNormal = { -1,0 };
+                }
+                if (getTile(overworld, collidingCoord).y < getTile(overworld, gameState->players[p].playerCoord).y) {
+                    wallNormal = { 0,1 };
+                }
+                if (getTile(overworld, collidingCoord).y > getTile(overworld, gameState->players[p].playerCoord).y) {
+                    wallNormal = { 0,-1 };
+                }
+                // BOUNCE
+                float dotProduct = dot(gameState->players[p].velocity, Vector2{ 0,1 });
+                //gameState->players[p].velocity = gameState->players[p].velocity - 1 * dotProduct * wallNormal;
+                gameState->players[p].velocity = gameState->players[p].velocity - 1 * dotProduct * wallNormal;
+            }
+
+        }
+    }
+    // Draw TileMap
     displayBMP((uint32_t*)bitmapMemory, &gameState->background, 0, 0, width, height);
     float grayShadeForTile = 0.5;
 
-    Vector2 currentScreen = {(float)((int)(playerScreen.x) / SCREEN_TILE_WIDTH), (float)((int)(playerScreen.y) / SCREEN_TILE_HEIGHT)};
+    Vector2 player1AbsoluteTile = { 0,0 };
+    int playerScreenZ = 0;
+    if (gameState->players[0].active) {
+        player1AbsoluteTile = getTile(overworld, gameState->players[0].playerCoord) + getChunk(overworld, gameState->players[0].playerCoord) * (float)overworld->tilesPerChunk;
+        playerScreenZ = gameState->players[0].playerCoord.z;
+    }
+    Vector2 currentScreen = {(float)((int)(player1AbsoluteTile.x) / SCREEN_TILE_WIDTH), (float)((int)(player1AbsoluteTile.y) / SCREEN_TILE_HEIGHT)};
 
     for (int j = 0; j < SCREEN_TILE_HEIGHT; j++) {
         for (int i = 0; i < SCREEN_TILE_WIDTH; i++) {
             AbsoluteCoordinate tileCoord;
-            tileCoord = constructCoordinate(overworld, { 0, 0 }, gameState->playerCoord.z, { i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT });
+            tileCoord = constructCoordinate(overworld, { 0, 0 }, playerScreenZ, { i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT });
             if (getTileValue(overworld, tileCoord) == 1) {
                 grayShadeForTile = 0.5;
             }
@@ -421,9 +487,7 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                 continue;
             }
 
-            
-
-            if (playerScreen == Vector2{i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT}) {
+            if (player1AbsoluteTile == Vector2{i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT}) {
                 grayShadeForTile = 0.2f;
             }
 
@@ -435,31 +499,24 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
             drawRectangle(bitmapMemory, width, height, minX, minY, maxX, maxY, grayShadeForTile, grayShadeForTile, grayShadeForTile);
         }
     }
-    // Draw Player
-    drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH) ,
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT),
-        unitsToPixels(playerScreen.x + playerWidth + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH) ,
-        unitsToPixels(playerScreen.y + playerHeight + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT)  , 1.0f, 1.0f, 0.0f);
-
-    // Load data
-    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->orientation], unitsToPixels(playerScreen.x), unitsToPixels(playerScreen.y), width, height);
-    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->orientation], unitsToPixels(playerScreen.x), unitsToPixels(playerScreen.y), width, height);
-   /* drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT),
-        unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH) + gameState->guyHead[gameState->orientation].width,
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT) + gameState->guyHead[gameState->orientation].height, 1.0f, 0.0f, 0.0f);*/
-    displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->orientation],
-        unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
-    displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->orientation],
-        unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
-    displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->orientation], 
-        unitsToPixels(playerScreen.x + gameState->offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH), 
-        unitsToPixels(playerScreen.y + gameState->offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
-    //displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->orientation],0, 0, width, height);
-
-    Vector2 v = { 2,3 };
-    Vector2 b = { 3,4 };
-    v += b;
+    for (int p = 0; p < 4; p++) { // Draw Players
+        if (gameState->players[p].active) {
+            Vector2 playerScreenTile = getTile(overworld, gameState->players[p].playerCoord) + getChunk(overworld, gameState->players[p].playerCoord) * (float)overworld->tilesPerChunk;
+            if (gameState->players[p].playerCoord.z == (uint32_t)playerScreenZ) {
+                drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreenTile.x + gameState->players[p].offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT),
+                    unitsToPixels(playerScreenTile.x + playerWidth + gameState->players[p].offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight + gameState->players[p].offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), 1.0f, 1.0f, 0.0f);
+                displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->players[p].orientation],
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+                displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->players[p].orientation],
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+                displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->players[p].orientation],
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].offsetInTile.x - currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].offsetInTile.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+            }
+        }
+    }
 }
