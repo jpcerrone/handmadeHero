@@ -104,18 +104,22 @@ Bitmap loadBMP(char* path, readFile_t* readFunction, ThreadContext *thread) {
     retBitmap.height = header->Height;
 
     // Modify loaded bmp to set its pixels in the right order. Our pixel format is AARRGGBB, but bmps may vary because of their masks.
+    int alphaOffset = findFirstSignificantBit(header->AlphaMask);
     int redOffset = findFirstSignificantBit(header->RedMask);
     int greenOffset = findFirstSignificantBit(header->GreenMask);
     int blueOffset = findFirstSignificantBit(header->BlueMask);
-    int alphaOffset = findFirstSignificantBit(header->AlphaMask);
 
     uint32_t *modifyingPixelPointer = retBitmap.startPixelPointer;
     for (int j = 0; j < header->Height; j++) {
         for (int i = 0; i < header->Width; i++) {
-            int newRedValue = ((*modifyingPixelPointer & header->RedMask) >> redOffset) << 16;
-            int newGreenValue = ((*modifyingPixelPointer & header->GreenMask) >> greenOffset) << 8;
-            int newBlueValue = ((*modifyingPixelPointer & header->BlueMask) >> blueOffset) << 0;
-            int newAlphaValue = ((*modifyingPixelPointer & header->AlphaMask) >> alphaOffset) << 24;
+            int rotDiff = 24 - alphaOffset;
+            int newAlphaValue = _rotl(*modifyingPixelPointer & header->AlphaMask, rotDiff);
+            rotDiff = 16 - redOffset;
+            int newRedValue = _rotl(*modifyingPixelPointer & header->RedMask, rotDiff);
+            rotDiff = 8 - greenOffset;
+            int newGreenValue = _rotl(*modifyingPixelPointer & header->GreenMask, rotDiff);
+            rotDiff = 0 - blueOffset;
+            int newBlueValue = _rotl(*modifyingPixelPointer & header->BlueMask, rotDiff);
 
             *modifyingPixelPointer = newAlphaValue | newRedValue | newGreenValue | newBlueValue; //OG RRGGBBAA
             modifyingPixelPointer++;

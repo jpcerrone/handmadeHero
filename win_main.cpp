@@ -504,7 +504,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 for (int a = 0; a < sizeof(newInputState.axis) / sizeof(AxisState); a++) {
                     newInputState.axis[a] = inputStates[4].axis[a];
                 }
-                inputStates[4] = newInputState;
+                inputStates[4] = newInputState; 
                 loadGameCode();
 
                 // Joypad Input
