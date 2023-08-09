@@ -48,6 +48,11 @@ Vector2& operator/=(Vector2& A, const float scalar) {
 	return A;
 }
 
+Vector2& operator*=(Vector2& A, const float scalar) {
+	A = A * scalar;
+	return A;
+}
+
 float dot(const Vector2& A, const Vector2& B) {
 	return A.x * B.x + A.y * B.y;
 }

@@ -375,23 +375,24 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
             Vector2 newOffset = gameState->players[p].offsetInTile;
             if (inputStates[c].Left_Stick.xPosition < 0) {
-                playerAcceleration.x = -playerSpeed;
                 gameState->players[p].orientation = 2;
             }
             if (inputStates[c].Left_Stick.xPosition > 0) {
-                playerAcceleration.x = playerSpeed;
                 gameState->players[p].orientation = 3;
             }
             if (inputStates[c].Left_Stick.yPosition < 0) {
-                playerAcceleration.y = playerSpeed;
                 gameState->players[p].orientation = 0;
             }
             if (inputStates[c].Left_Stick.yPosition > 0) {
-                playerAcceleration.y = -playerSpeed;
                 gameState->players[p].orientation = 1;
             }
+            playerAcceleration = Vector2{ inputStates[c].Left_Stick.xPosition, -inputStates[c].Left_Stick.yPosition };
+
+            float playerAccelerationMag = magnitude(playerAcceleration);
+            if (playerAccelerationMag > 0) {
+                playerAcceleration /= playerAccelerationMag; // Normalize
+            }
             if (inputStates[c].Left_Stick.yPosition != 0 && inputStates[c].Left_Stick.xPosition != 0) { // Moving diagonally
-                playerAcceleration /= 1.41f; // sqrt(2)
                 if (fabs(inputStates[c].Left_Stick.yPosition) > fabs(inputStates[c].Left_Stick.xPosition)) {
                     gameState->players[p].orientation = (inputStates[c].Left_Stick.yPosition > 0) ? 1 : 0;
                 }
@@ -399,6 +400,7 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                     gameState->players[p].orientation = (inputStates[c].Left_Stick.xPosition > 0) ? 3 : 2;
                 }
             }
+            playerAcceleration *= playerSpeed;
             Vector2 oldOffset = newOffset;
 
             playerAcceleration += -drag * gameState->players[p].velocity;
