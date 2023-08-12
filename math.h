@@ -73,4 +73,12 @@ uint32_t roundUFloat(float value) {
 	return (uint32_t)(value + 0.5f);
 }
 
+uint32_t minf(uint32_t A, uint32_t B) {
+	return (A <= B) ? A : B;
+}
+
+uint32_t maxf(uint32_t A, uint32_t B) {
+	return (A >= B) ? A : B;
+}
+
 //

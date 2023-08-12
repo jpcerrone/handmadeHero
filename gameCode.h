@@ -57,7 +57,6 @@ struct Bitmap {
 
 struct Entity {
     AbsoluteCoordinate playerCoord;
-    Vector2 offsetInTile;
     Vector2 velocity;
     int orientation; // 0 back 1 front 2 left 3 right
 
