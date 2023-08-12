@@ -63,6 +63,12 @@ void setTileValue(MemoryArena* worldArena, World* world, int absoluteX, int abso
     currentChunk->tiles[absoluteY * world->tilesPerChunk + absoluteX] = value;
 }
 
+Vector2 subract(AbsoluteCoordinate A, AbsoluteCoordinate B) {
+    Vector2 difference = { (float)A.x - B.x, (float)A.y - B.y };
+    Vector2 offsetDifference = { (float)A.offset.x - B.offset.x, (float)A.offset.y - B.offset.y };
+    return difference + offsetDifference;
+}
+
 Vector2 getTile(World* world, AbsoluteCoordinate coord) {
     return { (float)(coord.x & ((1 << world->bitsForTiles) - 1)), (float)(coord.y & ((1 << world->bitsForTiles) - 1) )};
 }
@@ -71,7 +77,7 @@ Vector2 getChunk(World* world, AbsoluteCoordinate coord) {
     return { (float)(coord.x >> world->bitsForTiles), (float)(coord.y >> world->bitsForTiles) };
 }
 
-AbsoluteCoordinate constructCoordinate(World* world, Vector2 chunk, int chunkZ, Vector2 tile) {
+AbsoluteCoordinate constructCoordinate(World* world, Vector2 chunk, int chunkZ, Vector2 tile, Vector2 offset) {
     while (tile.x >= getChunkSize(world)) {
         tile.x -= getChunkSize(world);
         chunk.x += 1;
@@ -105,6 +111,7 @@ AbsoluteCoordinate constructCoordinate(World* world, Vector2 chunk, int chunkZ, 
     ret.x = ((int)(chunk.x) << (world->bitsForTiles)) | ((int)tile.x);
     ret.y = ((int)(chunk.y) << (world->bitsForTiles)) | ((int)tile.y);
     ret.z = chunkZ;
+    ret.offset = offset;
     return ret;
 }
 
@@ -153,5 +160,5 @@ AbsoluteCoordinate canonicalize(World* world, AbsoluteCoordinate* coord, Vector2
         tile.y = (float)getChunkSize(world) - 1;
         chunk.y -= 1;
     }
-    return constructCoordinate(world, chunk, chunkZ, tile);
+    return constructCoordinate(world, chunk, chunkZ, tile, *offset);
 }
