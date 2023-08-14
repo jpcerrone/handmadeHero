@@ -275,6 +275,8 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         gameState->world->chunks = pushArray(&gameState->worldArena,
             gameState->world->numChunksX * gameState->world->numChunksY * gameState->world->numChunksZ, Chunk);
 
+        gameState->currentScreen = { 0,0 };
+
         int randomNumbers[10] = { 5, 6, 15, 18, 20, 3, 6, 8, 16, 19 };
 
         int randomNumberIdx = 0;
@@ -380,7 +382,11 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                 for (int p = 0; p < 4; p++) {
                     if (!gameState->players[p].active) {
                         gameState->players[p].active = true;
-                        gameState->players[p].playerCoord = constructCoordinate(gameState->world, { 0,0 }, 0, { 1,2 }, {0,0});
+
+                        Vector2 spawnPlayerTile = Vector2{ gameState->currentScreen.x * SCREEN_TILE_WIDTH, 
+                            gameState->currentScreen.y * SCREEN_TILE_HEIGHT } + Vector2{1, 2};
+
+                        gameState->players[p].playerCoord = constructCoordinate(gameState->world, { 0,0 }, 0, spawnPlayerTile, {0,0});
                         gameState->players[p].velocity = { 0,0 };
                         gameState->players[p].orientation = 1;
                         gameState->assignedPlayerForControllers[c] = p;
@@ -464,6 +470,7 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
 
                         farthestPoint = oldPoint;
                         farthestPoint.offset += playerDelta * farthestT;
+                        farthestPoint = canonicalize(overworld, &farthestPoint, &farthestPoint.offset);
                     }
 
                 }
@@ -491,13 +498,13 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
     if (gameState->players[0].active) {
         player1AbsoluteTile = getTile(overworld, gameState->players[0].playerCoord) + getChunk(overworld, gameState->players[0].playerCoord) * (float)overworld->tilesPerChunk;
         playerScreenZ = gameState->players[0].playerCoord.z;
+        gameState->currentScreen = {(float)((int)(player1AbsoluteTile.x) / SCREEN_TILE_WIDTH), (float)((int)(player1AbsoluteTile.y) / SCREEN_TILE_HEIGHT)};
     }
-    Vector2 currentScreen = {(float)((int)(player1AbsoluteTile.x) / SCREEN_TILE_WIDTH), (float)((int)(player1AbsoluteTile.y) / SCREEN_TILE_HEIGHT)};
 
     for (int j = 0; j < SCREEN_TILE_HEIGHT; j++) {
         for (int i = 0; i < SCREEN_TILE_WIDTH; i++) {
             AbsoluteCoordinate tileCoord;
-            tileCoord = constructCoordinate(overworld, { 0, 0 }, playerScreenZ, { i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT }, {0,0});
+            tileCoord = constructCoordinate(overworld, { 0, 0 }, playerScreenZ, { i + gameState->currentScreen.x * SCREEN_TILE_WIDTH, j + gameState->currentScreen.y * SCREEN_TILE_HEIGHT }, {0,0});
             if (getTileValue(overworld, tileCoord) == 1) {
                 grayShadeForTile = 0.5;
             }
@@ -514,7 +521,7 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
                 continue;
             }
 
-            if (player1AbsoluteTile == Vector2{i + currentScreen.x * SCREEN_TILE_WIDTH, j + currentScreen.y * SCREEN_TILE_HEIGHT}) {
+            if (player1AbsoluteTile == Vector2{i + gameState->currentScreen.x * SCREEN_TILE_WIDTH, j + gameState->currentScreen.y * SCREEN_TILE_HEIGHT}) {
                 grayShadeForTile = 0.2f;
             }
 
@@ -530,19 +537,19 @@ extern "C" GAMECODE_API UPDATE_AND_RENDER(updateAndRender)
         if (gameState->players[p].active) {
             Vector2 playerScreenTile = getTile(overworld, gameState->players[p].playerCoord) + getChunk(overworld, gameState->players[p].playerCoord) * (float)overworld->tilesPerChunk;
             if (gameState->players[p].playerCoord.z == (uint32_t)playerScreenZ) {
-                drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - currentScreen.x * SCREEN_TILE_WIDTH),
-                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - currentScreen.y * SCREEN_TILE_HEIGHT),
-                    unitsToPixels(playerScreenTile.x + playerWidth + gameState->players[p].playerCoord.offset.x - currentScreen.x * SCREEN_TILE_WIDTH),
-                    unitsToPixels(playerScreenTile.y + playerHeight + gameState->players[p].playerCoord.offset.y - currentScreen.y * SCREEN_TILE_HEIGHT), 1.0f, 1.0f, 0.0f);
+                drawRectangle(bitmapMemory, width, height, unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - gameState->currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - gameState->currentScreen.y * SCREEN_TILE_HEIGHT),
+                    unitsToPixels(playerScreenTile.x + playerWidth + gameState->players[p].playerCoord.offset.x - gameState->currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight + gameState->players[p].playerCoord.offset.y - gameState->currentScreen.y * SCREEN_TILE_HEIGHT), 1.0f, 1.0f, 0.0f);
                 displayBMP((uint32_t*)bitmapMemory, &gameState->guyTorso[gameState->players[p].orientation],
-                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - currentScreen.x * SCREEN_TILE_WIDTH),
-                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - gameState->currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - gameState->currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
                 displayBMP((uint32_t*)bitmapMemory, &gameState->guyCape[gameState->players[p].orientation],
-                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - currentScreen.x * SCREEN_TILE_WIDTH),
-                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - gameState->currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - gameState->currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
                 displayBMP((uint32_t*)bitmapMemory, &gameState->guyHead[gameState->players[p].orientation],
-                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - currentScreen.x * SCREEN_TILE_WIDTH),
-                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
+                    unitsToPixels(playerScreenTile.x + gameState->players[p].playerCoord.offset.x - gameState->currentScreen.x * SCREEN_TILE_WIDTH),
+                    unitsToPixels(playerScreenTile.y + playerHeight / 2.0f + gameState->players[p].playerCoord.offset.y - gameState->currentScreen.y * SCREEN_TILE_HEIGHT), width, height);
             }
         }
     }

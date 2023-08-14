@@ -4,7 +4,7 @@ My attempt at following https://handmadehero.org/ . A series on implementing a c
 
 The code is in a highly experimental state so expect it to be very ugly and unsctructured.
 
-Currently on day 40.
+Currently on day 50.
 
 ## Things implemented so far:
 * Windows message queue processing.
@@ -19,3 +19,5 @@ Currently on day 40.
 * Collision checking.
 * BMP file loading and rendering.
 * Alpha blending.
+* Local multiplayer support.
+* Acceleration and drag.

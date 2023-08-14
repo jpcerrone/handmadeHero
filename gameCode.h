@@ -75,6 +75,8 @@ struct GameState{
     Bitmap guyHead[4];
     Bitmap guyCape[4];
     Bitmap guyTorso[4];
+
+    Vector2 currentScreen;
 };
 
 struct ButtonState{
